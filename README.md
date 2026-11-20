@@ -114,7 +114,9 @@ Zenith's installer hardens the box by default:
 - **nginx rate limiting** — login endpoint (6/min sustained, burst 10) → 429 for brute force
 - **HSTS + security headers** + `server_tokens off`
 - **2FA required for admins** — enroll at first admin login
-- **MariaDB tuning** — 2GB buffer pool, O_DIRECT flush, slow-query log
+- **MariaDB tuning** — 512MB buffer (low-RAM right-sized), O_DIRECT flush, performance_schema off, slow-query log
+- **Zero idle RAM** — PHP-FPM ondemand mode: no idle workers, spawns on request, exits after 15s idle
+- **Low-RAM profile** — full stack idles at ~300MB; runs comfortably on a 2GB VPS
 - **Daily DB backups** — 14-day retention, includes `.env` (APP_KEY)
 - **Unattended security upgrades** — automatic patching
 - **`.env` locked down** — 640 root:www-data

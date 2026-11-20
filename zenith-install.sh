@@ -169,6 +169,15 @@ chmod 440 /etc/sudoers.d/zenith-admin
 
 step "9.5 — Zenith hardening (OPcache/JIT, rate limits, firewall, 2FA)"
 
+# PHP-FPM: ondemand mode — zero idle RAM
+cat > /etc/php/8.3/fpm/pool.d/zz-zenith-ondemand.conf <<'FPMCONF'
+[www]
+pm = ondemand
+pm.max_children = 30
+pm.process_idle_timeout = 15s
+FPMCONF
+systemctl restart php8.3-fpm
+
 # PHP performance + hardening
 cat > /etc/php/8.3/fpm/conf.d/99-zenith-perf.ini <<'PHPINI'
 opcache.memory_consumption=256
@@ -176,8 +185,8 @@ opcache.interned_strings_buffer=16
 opcache.max_accelerated_files=20000
 opcache.validate_timestamps=0
 opcache.revalidate_freq=0
-opcache.jit=tracing
-opcache.jit_buffer_size=64M
+opcache.jit=off
+opcache.jit_buffer_size=0
 expose_php=Off
 PHPINI
 cat > /etc/php/8.3/cli/conf.d/99-zenith-perf.ini <<'PHPCLI'
