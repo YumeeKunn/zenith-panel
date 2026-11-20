@@ -1,0 +1,5 @@
+# Zenith panel: admin panel se watchdog/notifier timers control
+Cmnd_Alias ZENITH_SVC = /usr/bin/systemctl start ptero-watchdog.timer, /usr/bin/systemctl stop ptero-watchdog.timer, /usr/bin/systemctl restart ptero-watchdog.timer, /usr/bin/systemctl start ptero-watchdog.service, /usr/bin/systemctl stop ptero-watchdog.service, /usr/bin/systemctl restart ptero-watchdog.service, /usr/bin/systemctl is-active ptero-watchdog.timer, /usr/bin/systemctl is-active ptero-watchdog.service
+Cmnd_Alias ZENITH_NOTIFY = /usr/bin/systemctl start ptero-notify.timer, /usr/bin/systemctl stop ptero-notify.timer, /usr/bin/systemctl restart ptero-notify.timer, /usr/bin/systemctl start ptero-notify.service, /usr/bin/systemctl stop ptero-notify.service, /usr/bin/systemctl restart ptero-notify.service, /usr/bin/systemctl is-active ptero-notify.timer, /usr/bin/systemctl is-active ptero-notify.service
+Cmnd_Alias ZENITH_LOGS = /usr/bin/journalctl
+www-data ALL=(root) NOPASSWD: ZENITH_SVC, ZENITH_NOTIFY, ZENITH_LOGS

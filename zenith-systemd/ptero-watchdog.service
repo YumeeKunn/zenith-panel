@@ -1,0 +1,9 @@
+[Unit]
+Description=Pterodactyl Zenith Watchdog (crash restart, overload cutoff)
+After=mariadb.service redis-server.service
+
+[Service]
+Type=oneshot
+User=www-data
+Group=www-data
+ExecStart=/usr/bin/php8.3 /var/www/pterodactyl/artisan zenith:watchdog
