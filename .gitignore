@@ -5,6 +5,7 @@ storage/logs/*.log
 storage/framework/cache/data/*
 public/assets/*
 !public/assets/.gitkeep
+!public/assets/svgs
 .DS_Store
 *.log
 .blueprint/
