@@ -165,12 +165,29 @@
                 </div>
 
                 <div class="box box-success">
-                    <div class="box-header with-border"><h3 class="box-title">Discord Webhook</h3></div>
+                    <div class="box-header with-border"><h3 class="box-title">Notification Channels (koi bhi ya sab)</h3></div>
                     <div class="box-body">
                         <div class="form-group">
-                            <label>Webhook URL</label>
+                            <label><i class="fa fa-comment"></i> Discord Webhook</label>
                             <input type="text" class="form-control" name="discord_webhook" value="{{ old('discord_webhook', $discordWebhook) }}" placeholder="https://discord.com/api/webhooks/...">
-                            <p class="text-muted"><small>Channel → Edit → Integrations → Webhooks → New → Copy URL. Empty = notifications off.</small></p>
+                            <p class="text-muted"><small>Channel → Edit → Integrations → Webhooks → New → Copy URL.</small></p>
+                        </div>
+                        <div class="form-group">
+                            <label><i class="fa fa-mobile"></i> LINE Messaging API</label>
+                            <input type="text" class="form-control" name="line_token" value="{{ old('line_token', $lineToken) }}" placeholder="Channel access token ( eyJ... )">
+                            <input type="text" class="form-control" name="line_user" value="{{ old('line_user', $lineUser) }}" placeholder="User/Group ID (U... ya C...)" style="margin-top:6px">
+                            <p class="text-muted"><small>developers.line.biz → Channel → Messaging API → Channel access token + apna User ID.</small></p>
+                        </div>
+                        <div class="form-group">
+                            <label><i class="fa fa-telegram"></i> Telegram Bot</label>
+                            <input type="text" class="form-control" name="telegram_token" value="{{ old('telegram_token', $telegramToken) }}" placeholder="Bot token ( 123456:ABC-... )">
+                            <input type="text" class="form-control" name="telegram_chat" value="{{ old('telegram_chat', $telegramChat) }}" placeholder="Chat ID ( -100... ya 123456 )" style="margin-top:6px">
+                            <p class="text-muted"><small>@BotFather se bot banao → token le. Chat ID: @userinfobot se pucho.</small></p>
+                        </div>
+                        <div class="form-group">
+                            <label><i class="fa fa-bolt"></i> Generic Webhook (ntfy/Slack/custom)</label>
+                            <input type="text" class="form-control" name="generic_webhook" value="{{ old('generic_webhook', $genericWebhook) }}" placeholder="https://ntfy.sh/your-topic ya koi bhi JSON endpoint">
+                            <p class="text-muted"><small>POST JSON: {title, message, severity, timestamp}</small></p>
                         </div>
                     </div>
                     <div class="box-footer">
@@ -184,9 +201,9 @@
     {{-- Test discord (separate form) --}}
     <div class="row">
         <div class="col-md-6 col-md-offset-6">
-            <form action="{{ route('admin.zenith.testDiscord') }}" method="POST">
+            <form action="{{ route('admin.zenith.testChannels') }}" method="POST">
                 @csrf
-                <button class="btn btn-sm btn-info">📨 Send Test Message to Discord</button>
+                <button class="btn btn-sm btn-info">📨 Send Test Message (all configured channels)</button>
             </form>
         </div>
     </div>

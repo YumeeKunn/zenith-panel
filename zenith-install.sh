@@ -221,6 +221,11 @@ sed -i "s/^# requirepass foobared/requirepass $REDIS_PASS/" /etc/redis/redis.con
 systemctl restart redis-server
 set_env REDIS_PASSWORD "$REDIS_PASS"
 set_env REDIS_CLIENT "phpredis"
+set_env ZENITH_LINE_TOKEN ""
+set_env ZENITH_LINE_USER ""
+set_env ZENITH_TELEGRAM_TOKEN ""
+set_env ZENITH_TELEGRAM_CHAT ""
+set_env ZENITH_GENERIC_WEBHOOK ""
 cd "$PANEL_DIR"
 php artisan config:clear >/dev/null 2>&1
 rm -f bootstrap/cache/config.php

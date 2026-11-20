@@ -117,6 +117,27 @@ class DiscordNotifierCommand extends Command
                         0xE67E22
                     );
                 }
+                // Host disk check (root + wings volumes)
+                $hostDisk = $this->hostDisk('/');
+                if ($hostDisk !== null && $hostDisk >= (float) ($this->dbSetting('notify:host-disk-warn') ?? 90)) {
+                    $this->alertOnce(
+                        "node-disk:{$node->id}",
+                        "💾 **Host DISK FULL** — `{$node->name}` root disk **{$hostDisk}%**",
+                        "Disk {$hostDisk}% used.\n**Fix suggestions:**\n• `docker system prune -a` purane images hatao\n• `/var/lib/pterodactyl/volumes` me bade server files check karo\n• `/var/backups/pterodactyl` purane backup delete karo\n• Disk expand ya cleanup karwao",
+                        0xE67E22
+                    );
+                }
+
+                // Backup freshness — last backup 26h+ purana = backup system stuck
+                $lastBackup = $this->lastBackupAge();
+                if ($lastBackup !== null && $lastBackup > 26) {
+                    $this->alertOnce(
+                        "backup-stale",
+                        "💾 **BACKUP STALE** — last DB backup {$lastBackup}h purana",
+                        "Daily backup expected (3AM cron) par {$lastBackup}h se nahi chala.\n**Fix suggestions:**\n• `tail /var/log/ptero-backup.log` dekho\n• Manual run: /usr/local/bin/ptero-db-backup.sh\n• crontab -l me entry check karo",
+                        0xE67E22
+                    );
+                }
             } catch (\Exception $e) {
                 Cache::forget('zenith:node-up:' . $node->id);
                 $this->alertOnce(
@@ -263,6 +284,22 @@ class DiscordNotifierCommand extends Command
     {
         $v = \Pterodactyl\Models\Setting::where('key', 'zenith::' . $short)->value('value');
         return ($v !== null && $v !== '') ? $v : null;
+    }
+
+    private function hostDisk(string $path): ?float
+    {
+        $total = @disk_total_space($path);
+        $free = @disk_free_space($path);
+        if (!$total || !$free) return null;
+        return round((($total - $free) / $total) * 100, 1);
+    }
+
+    private function lastBackupAge(): ?float
+    {
+        $files = glob('/var/backups/pterodactyl/panel_*.sql.gz');
+        if (empty($files)) return null;
+        $latest = max(array_map('filemtime', $files));
+        return round((time() - $latest) / 3600, 1);
     }
 
     private function hostCpu(): ?float

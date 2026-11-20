@@ -67,7 +67,7 @@ Route::group(['prefix' => 'zenith'], function () {
     Route::get('/', [Admin\ZenithController::class, 'index'])->name('admin.zenith');
     Route::post('/', [Admin\ZenithController::class, 'update'])->name('admin.zenith.update');
     Route::post('/service/{service}/{action}', [Admin\ZenithController::class, 'service'])->name('admin.zenith.service');
-    Route::post('/test-discord', [Admin\ZenithController::class, 'testDiscord'])->name('admin.zenith.testDiscord');
+    Route::post('/test-channels', [Admin\ZenithController::class, 'testChannels'])->name('admin.zenith.testChannels');
 });
 
 /*

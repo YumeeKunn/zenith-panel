@@ -22,7 +22,7 @@ use Pterodactyl\Services\Servers\SuspensionService;
  */
 class WatchdogCommand extends Command
 {
-    protected $signature = 'ptero:watchdog
+    protected $signature = 'zenith:watchdog
         {--dry-run : Report only, take no action}
         {--max-restarts=3 : Max auto-restarts per server per window}
         {--restart-window=600 : Restart window in seconds}
@@ -210,22 +210,10 @@ class WatchdogCommand extends Command
      * Zenith: push watchdog actions to Discord too (suspends shouldn't be silent).
      * Reads the same webhook the notifier uses (zenith::discord:webhook).
      */
+    /** Zenith: watchdog actions → Discord/LINE/Telegram/whatever channels are configured. */
     private function notifyDiscord(string $title, string $text): void
     {
-        $webhook = \Pterodactyl\Models\Setting::where('key', 'zenith::discord:webhook')->value('value')
-            ?: config('zenith.discord_webhook');
-        if (empty($webhook)) return;
-
-        try {
-            \Illuminate\Support\Facades\Http::timeout(10)->post($webhook, ['embeds' => [[
-                'title' => $title,
-                'description' => $text,
-                'color' => 0xED4245,
-                'footer' => ['text' => 'Zenith Watchdog • ' . now()->format('d M Y H:i') . ' UTC'],
-            ]]]);
-        } catch (\Throwable $e) {
-            // notification failure shouldn't break watchdog
-        }
+        app(\Pterodactyl\Services\Zenith\NotificationService::class)->send($title, $text, 0xED4245);
     }
 
     private function power(string $base, string $token, string $uuid, string $action): void

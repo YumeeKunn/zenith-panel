@@ -47,6 +47,11 @@ class ZenithController extends Controller
             'wdOomLimit' => $this->settings->get('zenith::watchdog:oom-limit', '3'),
             'wdDiskWarn' => $this->settings->get('zenith::watchdog:disk-warn', '90'),
             'discordWebhook' => $this->settings->get('zenith::discord:webhook', ''),
+            'lineToken' => $this->settings->get('zenith::line:token', ''),
+            'lineUser' => $this->settings->get('zenith::line:user', ''),
+            'telegramToken' => $this->settings->get('zenith::telegram:token', ''),
+            'telegramChat' => $this->settings->get('zenith::telegram:chat', ''),
+            'genericWebhook' => $this->settings->get('zenith::generic:webhook', ''),
         ]);
     }
 
@@ -71,6 +76,19 @@ class ZenithController extends Controller
                 } catch (\Throwable $e) {
                     \Log::channel('daily')->error('[zenith-ctrl] set failed for ' . $short . ': ' . $e->getMessage());
                 }
+            }
+        }
+
+        $channels = [
+            'line_token' => 'line:token',
+            'line_user' => 'line:user',
+            'telegram_token' => 'telegram:token',
+            'telegram_chat' => 'telegram:chat',
+            'generic_webhook' => 'generic:webhook',
+        ];
+        foreach ($channels as $field => $short) {
+            if ($request->has($field)) {
+                $this->settings->set('zenith::' . $short, (string) $request->input($field));
             }
         }
 
@@ -118,27 +136,20 @@ class ZenithController extends Controller
     }
 
     /** Send a test Discord message right now. */
-    public function testDiscord(): RedirectResponse
+    public function testChannels(): RedirectResponse
     {
-        $webhook = $this->settings->get('zenith::discord:webhook', '');
-        if (empty($webhook)) {
-            $this->alert->danger('Pehle webhook URL save karo.')->flash();
-            return redirect()->route('admin.zenith');
-        }
-        try {
-            $r = \Illuminate\Support\Facades\Http::timeout(10)->post($webhook, ['embeds' => [[
-                'title' => 'Zenith Panel Monitor',
-                'description' => '✅ Test message from Admin Panel — notifications working!',
-                'color' => 0x57F287,
-                'footer' => ['text' => 'Sent from Admin → Zenith Control'],
-            ]]]);
-            if ($r->successful()) {
-                $this->alert->success('Test message Discord pe bhej diya! Check karo.')->flash();
-            } else {
-                $this->alert->danger('Discord send fail: HTTP ' . $r->status())->flash();
+        $results = app(\Pterodactyl\Services\Zenith\NotificationService::class)->testAll();
+
+        if (empty($results)) {
+            $this->alert->danger('Koi notification channel configured nahi hai — pehle webhook/token save karo.')->flash();
+        } else {
+            foreach ($results as $ch => $res) {
+                if ($res === 'sent') {
+                    $this->alert->success(ucfirst($ch) . ': test message sent ✓')->flash();
+                } else {
+                    $this->alert->danger(ucfirst($ch) . ': FAILED — ' . $res)->flash();
+                }
             }
-        } catch (\Exception $e) {
-            $this->alert->danger('Discord send failed: ' . $e->getMessage())->flash();
         }
         return redirect()->route('admin.zenith');
     }
