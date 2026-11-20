@@ -13,11 +13,6 @@ import SpinnerOverlay from '@/components/elements/SpinnerOverlay';
 import Tooltip from '@/components/elements/tooltip/Tooltip';
 import Avatar from '@/components/Avatar';
 
-import AnnouncementBanner from '@/components/AnnouncementBanner';
-import BeforeNavigation from '@blueprint/components/Navigation/NavigationBar/BeforeNavigation';
-import AdditionalItems from '@blueprint/components/Navigation/NavigationBar/AdditionalItems';
-import AfterNavigation from '@blueprint/components/Navigation/NavigationBar/AfterNavigation';
-
 const RightNavigation = styled.div`
     & > a,
     & > button,
@@ -40,6 +35,8 @@ const RightNavigation = styled.div`
 export default () => {
     const name = useStoreState((state: ApplicationStore) => state.settings.data!.name);
     const logo = useStoreState((state: ApplicationStore) => state.settings.data!.logo);
+    const announcement = useStoreState((state: ApplicationStore) => state.settings.data?.announcement);
+    const announcementType = useStoreState((state: ApplicationStore) => state.settings.data?.announcementType || 'info');
     const rootAdmin = useStoreState((state: ApplicationStore) => state.user.data!.rootAdmin);
     const [isLoggingOut, setIsLoggingOut] = useState(false);
 
@@ -52,9 +49,22 @@ export default () => {
     };
 
     return (
-        <div className={'w-full bg-neutral-900 shadow-md overflow-x-auto'} id={'NavigationBar'}>
-            <AnnouncementBanner />
-            <BeforeNavigation />
+        <div className={'w-full bg-neutral-900 shadow-md overflow-x-auto'}>
+            {announcement && (
+                <div
+                    className={`px-4 py-2 text-center text-sm font-medium border-b ${
+                        announcementType === 'danger'
+                            ? 'bg-red-500/10 border-red-500/40 text-red-100'
+                            : announcementType === 'warning'
+                                ? 'bg-yellow-500/10 border-yellow-500/40 text-yellow-100'
+                                : announcementType === 'success'
+                                    ? 'bg-green-500/10 border-green-500/40 text-green-100'
+                                    : 'bg-blue-500/10 border-blue-500/40 text-blue-100'
+                    }`}
+                >
+                    {announcement}
+                </div>
+            )}
             <SpinnerOverlay visible={isLoggingOut} />
             <div className={'mx-auto w-full flex items-center h-[3.5rem] max-w-[1200px]'}>
                 <div id={'logo'} className={'flex-1'}>
@@ -73,33 +83,31 @@ export default () => {
                 <RightNavigation className={'flex h-full items-center justify-center'}>
                     <SearchContainer />
                     <Tooltip placement={'bottom'} content={'Dashboard'}>
-                        <NavLink to={'/'} exact id={'NavigationDashboard'}>
+                        <NavLink to={'/'} exact>
                             <FontAwesomeIcon icon={faLayerGroup} />
                         </NavLink>
                     </Tooltip>
                     {rootAdmin && (
                         <Tooltip placement={'bottom'} content={'Admin'}>
-                            <a href={'/admin'} rel={'noreferrer'} id={'NavigationAdmin'}>
+                            <a href={'/admin'} rel={'noreferrer'}>
                                 <FontAwesomeIcon icon={faCogs} />
                             </a>
                         </Tooltip>
                     )}
-                    <AdditionalItems />
                     <Tooltip placement={'bottom'} content={'Account Settings'}>
-                        <NavLink to={'/account'} id={'NavigationAccount'}>
+                        <NavLink to={'/account'}>
                             <span className={'flex items-center w-5 h-5'}>
                                 <Avatar.User />
                             </span>
                         </NavLink>
                     </Tooltip>
                     <Tooltip placement={'bottom'} content={'Sign Out'}>
-                        <button onClick={onTriggerLogout} id={'NavigationLogout'}>
+                        <button onClick={onTriggerLogout}>
                             <FontAwesomeIcon icon={faSignOutAlt} />
                         </button>
                     </Tooltip>
                 </RightNavigation>
             </div>
-            <AfterNavigation />
         </div>
     );
 };
