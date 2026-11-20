@@ -178,6 +178,11 @@ pm.process_idle_timeout = 15s
 FPMCONF
 systemctl restart php8.3-fpm
 
+# phpredis C-extension (7x faster redis ops than predis)
+apt-get install -y -qq php8.3-redis >/dev/null
+# enable gzip for JS/CSS (upstream nginx conf has it commented)
+sed -i 's/# gzip_types text\/plain/gzip_types text\/plain/' /etc/nginx/nginx.conf
+
 # PHP performance + hardening
 cat > /etc/php/8.3/fpm/conf.d/99-zenith-perf.ini <<'PHPINI'
 opcache.memory_consumption=256
@@ -215,6 +220,7 @@ REDIS_PASS="$(openssl rand -hex 16)"
 sed -i "s/^# requirepass foobared/requirepass $REDIS_PASS/" /etc/redis/redis.conf
 systemctl restart redis-server
 set_env REDIS_PASSWORD "$REDIS_PASS"
+set_env REDIS_CLIENT "phpredis"
 cd "$PANEL_DIR"
 php artisan config:clear >/dev/null 2>&1
 rm -f bootstrap/cache/config.php
