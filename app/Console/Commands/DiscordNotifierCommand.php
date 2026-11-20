@@ -253,6 +253,12 @@ class DiscordNotifierCommand extends Command
         }
     }
 
+    /** Self-signed certs common on IP installs — disable TLS verify via config. */
+    private function insecureTls(): bool
+    {
+        return (bool) config('zenith.insecure_tls', false);
+    }
+
     private function dbSetting(string $short): ?string
     {
         $v = \Pterodactyl\Models\Setting::where('key', 'zenith::' . $short)->value('value');
