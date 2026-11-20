@@ -22,7 +22,7 @@ use Pterodactyl\Services\Servers\SuspensionService;
  */
 class WatchdogCommand extends Command
 {
-    protected $signature = 'zenith:watchdog
+    protected $signature = 'ptero:watchdog
         {--dry-run : Report only, take no action}
         {--max-restarts=3 : Max auto-restarts per server per window}
         {--restart-window=600 : Restart window in seconds}
@@ -35,6 +35,12 @@ class WatchdogCommand extends Command
 
     private array $actions = [];
 
+    /** Self-signed certs common on IP installs — disable TLS verify via config. */
+    private function insecureTls(): bool
+    {
+        return (bool) config('zenith.insecure_tls', false);
+    }
+
     /** Admin panel (Zenith Control) DB setting overrides the CLI option. */
     private function opt(string $dbKey, string $cliOption, ?string $default = null): string
     {
@@ -46,33 +52,36 @@ class WatchdogCommand extends Command
     public function handle(): int
     {
         $dry = (bool) $this->option('dry-run');
-        $node = Node::first();
-        if (!$node) {
-            $this->error('No node found.');
+        $nodes = Node::all();
+        if ($nodes->isEmpty()) {
+            $this->error('No nodes found.');
             return 1;
         }
 
-        $base = $node->scheme . '://' . $node->fqdn . ':' . $node->daemonListen;
-        $token = $node->getDecryptedKey();
+        // Multi-node: monitor servers on every node
+        foreach ($nodes as $node) {
+            $base = $node->scheme . '://' . $node->fqdn . ':' . $node->daemonListen;
+            $token = $node->getDecryptedKey();
 
-        try {
-            $resp = Http::withToken($token)->withOptions(['verify' => false])->timeout(15)->get($base . '/api/servers');
-        } catch (\Exception $e) {
-            $this->error('Wings unreachable: ' . $e->getMessage());
-            return 1;
-        }
-        if (!$resp->successful()) {
-            $this->error('Wings API error: ' . $resp->status());
-            return 1;
-        }
+            try {
+                $resp = Http::withToken($token)->withOptions(['verify' => !$this->insecureTls()])->timeout(15)->get($base . '/api/servers');
+            } catch (\Exception $e) {
+                $this->error('Node ' . $node->name . ' unreachable: ' . $e->getMessage());
+                continue; // node down — notifier will alert, watchdog skips its servers
+            }
+            if (!$resp->successful()) {
+                $this->error('Node ' . $node->name . ' API error: ' . $resp->status());
+                continue;
+            }
 
-        $servers = $resp->json() ?? [];
-        foreach ($servers as $ws) {
-            $uuid = $ws['configuration']['uuid'] ?? null;
-            if (!$uuid) continue;
-            $server = Server::where('uuid', $uuid)->first();
-            if (!$server) continue;
-            $this->inspect($server, $ws, $base, $token, $dry);
+            $servers = $resp->json() ?? [];
+            foreach ($servers as $ws) {
+                $uuid = $ws['configuration']['uuid'] ?? null;
+                if (!$uuid) continue;
+                $server = Server::where('uuid', $uuid)->first();
+                if (!$server) continue;
+                $this->inspect($server, $ws, $base, $token, $dry);
+            }
         }
 
         foreach ($this->actions as $a) {
@@ -188,15 +197,41 @@ class WatchdogCommand extends Command
         try {
             app(SuspensionService::class)->toggle($server, SuspensionService::ACTION_SUSPEND);
             $this->actions[] = "  SUSPENDED {$server->name}: {$reason}";
+            $this->notifyDiscord(
+                "🐕 Watchdog SUSPENDED server",
+                "`{$server->name}` auto-suspended.\n**Reason:** {$reason}\n\n**Fix:** Admin → Servers → {$server->name} → unsuspend after investigating."
+            );
         } catch (\Exception $e) {
             $this->actions[] = "  SUSPEND FAILED {$server->name}: " . $e->getMessage();
+        }
+    }
+
+    /**
+     * Zenith: push watchdog actions to Discord too (suspends shouldn't be silent).
+     * Reads the same webhook the notifier uses (zenith::discord:webhook).
+     */
+    private function notifyDiscord(string $title, string $text): void
+    {
+        $webhook = \Pterodactyl\Models\Setting::where('key', 'zenith::discord:webhook')->value('value')
+            ?: config('zenith.discord_webhook');
+        if (empty($webhook)) return;
+
+        try {
+            \Illuminate\Support\Facades\Http::timeout(10)->post($webhook, ['embeds' => [[
+                'title' => $title,
+                'description' => $text,
+                'color' => 0xED4245,
+                'footer' => ['text' => 'Zenith Watchdog • ' . now()->format('d M Y H:i') . ' UTC'],
+            ]]]);
+        } catch (\Throwable $e) {
+            // notification failure shouldn't break watchdog
         }
     }
 
     private function power(string $base, string $token, string $uuid, string $action): void
     {
         try {
-            Http::withToken($token)->withOptions(['verify' => false])->timeout(15)
+            Http::withToken($token)->withOptions(['verify' => !$this->insecureTls()])->timeout(15)
                 ->post($base . '/api/servers/' . $uuid . '/power', ['action' => $action]);
         } catch (\Exception $e) {
             $this->actions[] = "  power {$action} failed: " . $e->getMessage();

@@ -134,7 +134,17 @@ if [[ "$FQDN" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
   openssl req -x509 -nodes -days 825 -newkey rsa:2048 \
     -keyout /etc/nginx/ssl/panel.key -out /etc/nginx/ssl/panel.crt \
     -subj "/CN=$FQDN" -addext "subjectAltName=IP:$FQDN" >/dev/null 2>&1
-  sed -i "s|listen 443 ssl http2;|listen 443 ssl http2;\n    ssl_certificate /etc/nginx/ssl/panel.crt;\n    ssl_certificate_key /etc/nginx/ssl/panel.key;|" /etc/nginx/sites-available/pterodactyl.conf
+  # insert ssl lines cleanly after the listen directive (robust against future edits)
+  python3 - "$FQDN" <<'SSLFIX'
+import sys, re
+fqdn = sys.argv[1]
+p = "/etc/nginx/sites-available/pterodactyl.conf"
+s = open(p).read()
+ssl_block = f"    ssl_certificate /etc/nginx/ssl/panel.crt;\n    ssl_certificate_key /etc/nginx/ssl/panel.key;\n"
+if "ssl_certificate" not in s:
+    s = s.replace("    server_name " + fqdn + ";\n", "    server_name " + fqdn + ";\n" + ssl_block, 1)
+    open(p, "w").write(s)
+SSLFIX
   cp /etc/nginx/ssl/panel.crt /usr/local/share/ca-certificates/zenithpanel.crt
   update-ca-certificates
   echo "  (self-signed cert — browser warning expected on IP installs)"

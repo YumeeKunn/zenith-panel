@@ -25,7 +25,7 @@ use Pterodactyl\Services\Servers\SuspensionService;
  */
 class ServerMoverCommand extends Command
 {
-    protected $signature = 'zenith:mover
+    protected $signature = 'ptero:mover
         {server : Server ID or UUID}
         {--to= : Target node ID}
         {--allocation= : Target allocation ID on new node}
@@ -48,7 +48,7 @@ class ServerMoverCommand extends Command
 
         $toNode = Node::find($this->option('to'));
         if (!$toNode) {
-            $this->error('Target node not found. Usage: zenith:mover <server> --to=<nodeId> --allocation=<allocId>');
+            $this->error('Target node not found. Usage: ptero:mover <server> --to=<nodeId> --allocation=<allocId>');
             return 1;
         }
         if ($toNode->id === $server->node_id) {
@@ -67,7 +67,7 @@ class ServerMoverCommand extends Command
         // ---- PRE-FLIGHT 1: target node reachable ----
         try {
             $resp = Http::withToken($toNode->getDecryptedKey())
-                ->withOptions(['verify' => false])->timeout(10)
+                ->withOptions(['verify' => !$this->insecureTls()])->timeout(10)
                 ->get($toNode->scheme . '://' . $toNode->fqdn . ':' . $toNode->daemonListen . '/api/system');
             if (!$resp->successful()) {
                 $this->error("PRE-FLIGHT FAIL: target node API returned {$resp->status()}");
@@ -120,7 +120,7 @@ class ServerMoverCommand extends Command
             app(\Pterodactyl\Services\Servers\ServerTransferService::class)->handle($server, $toNode->id, $allocId);
             $this->info('✓ transfer initiated — panel will stream files to target node');
             $this->line('monitor: Admin → Servers → ' . $server->name . ' (transfer status)');
-            $this->line('if it deadlocks: php artisan zenith:mover ' . $server->id . ' --rollback');
+            $this->line('if it deadlocks: php artisan ptero:mover ' . $server->id . ' --rollback');
             return 0;
         } catch (\Exception $e) {
             $this->error('TRANSFER START FAILED: ' . $e->getMessage());
@@ -147,7 +147,7 @@ class ServerMoverCommand extends Command
         if ($node) {
             try {
                 Http::withToken($node->getDecryptedKey())
-                    ->withOptions(['verify' => false])->timeout(10)
+                    ->withOptions(['verify' => !$this->insecureTls()])->timeout(10)
                     ->post($node->scheme . '://' . $node->fqdn . ':' . $node->daemonListen . '/api/servers/' . $server->uuid . '/sync');
                 $this->info('✓ wings re-synced on node ' . $node->id);
             } catch (\Exception $e) {

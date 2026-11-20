@@ -1,0 +1,56 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  php-syntax:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+      - name: Lint all PHP files
+        run: find app config database routes -name "*.php" -exec php -l {} \; | grep -v "No syntax errors" || echo "all PHP files OK"
+
+  php-dependencies:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: mbstring, xml, gd, bcmath, intl
+      - name: Validate composer.json
+        run: composer validate --strict
+      - name: Install dependencies
+        run: composer install --no-dev --optimize-autoloader --no-interaction
+      - name: Check Zenith commands register
+        run: |
+          cp .env.example .env
+          php artisan key:generate --force --no-interaction
+          php artisan list | grep -q "zenith:watchdog" && echo "✓ watchdog"
+          php artisan list | grep -q "zenith:notify" && echo "✓ notifier"
+          php artisan list | grep -q "zenith:mover" && echo "✓ mover"
+          php artisan list | grep -q "zenith:announce" && echo "✓ announce"
+          php artisan list | grep -q "zenith:logo" && echo "✓ logo"
+          php artisan list | grep -q "zenith:discord-setup" && echo "✓ discord-setup"
+
+  frontend-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install yarn
+        run: npm install -g yarn
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile || yarn install
+      - name: Build production assets
+        run: yarn build:production

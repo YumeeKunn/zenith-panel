@@ -8,6 +8,8 @@ return [
     'announcement_type' => env('ZENITH_ANNOUNCEMENT_TYPE', 'info'), // info|warning|danger|success
     // Discord notifier
     'discord_webhook' => env('ZENITH_DISCORD_WEBHOOK'),
+    // Self-signed cert installs (IP) pe wings API TLS verify disable karne ke liye
+    'insecure_tls' => env('ZENITH_VERIFY_TLS') === null ? true : (env('ZENITH_VERIFY_TLS') === 'false'),
     'discord_bot_token' => env('ZENITH_DISCORD_BOT_TOKEN'),
     'discord_channel_id' => env('ZENITH_DISCORD_CHANNEL_ID'),
 ];

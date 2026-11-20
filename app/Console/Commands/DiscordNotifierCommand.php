@@ -47,7 +47,7 @@ class DiscordNotifierCommand extends Command
     public function handle(): int
     {
         $this->webhook = \Pterodactyl\Models\Setting::where('key', 'zenith::discord:webhook')->value('value') ?: config('zenith.discord_webhook');
-        $this->botToken = config('zenith.discord_bot_token') ?: trim((string) @shell_exec('cat /root/.hermes/.env 2>/dev/null | grep "^DISCORD_BOT_TOKEN=" | cut -d= -f2'));
+        $this->botToken = config('zenith.discord_bot_token');
         $this->channelId = config('zenith.discord_channel_id');
 
         if (empty($this->webhook) && empty($this->botToken)) {
@@ -89,7 +89,7 @@ class DiscordNotifierCommand extends Command
 
             try {
                 $resp = Http::withToken($node->getDecryptedKey())
-                    ->withOptions(['verify' => false])->timeout(8)
+                    ->withOptions(['verify' => !$this->insecureTls()])->timeout(8)
                     ->get($base . '/api/system');
                 if (!$resp->successful()) {
                     throw new \Exception('HTTP ' . $resp->status());
@@ -132,18 +132,9 @@ class DiscordNotifierCommand extends Command
 
     private function checkServers(): void
     {
-        $node = Node::first();
-        if (!$node) return;
-        $base = $node->scheme . '://' . $node->fqdn . ':' . $node->daemonListen;
-
-        try {
-            $resp = Http::withToken($node->getDecryptedKey())
-                ->withOptions(['verify' => false])->timeout(8)
-                ->get($base . '/api/servers');
-            if (!$resp->successful()) return;
-        } catch (\Exception $e) {
-            return; // node down already alerted
-        }
+        // Multi-node: check servers on every node
+        $nodes = Node::all();
+        if ($nodes->isEmpty()) return;
 
         // Admin panel (Zenith Control) DB settings override CLI defaults
         $cfg = fn (string $key, string $opt, ?float $def = null) => (float) ($this->dbSetting($key) ?? ($this->option($opt) ?: $def));
@@ -151,7 +142,18 @@ class DiscordNotifierCommand extends Command
         $memWarn = $cfg('notify:mem-warn', 'mem-warn', 90);
         $diskWarn = $cfg('notify:disk-warn', 'disk-warn', 90);
 
-        foreach ($resp->json() ?? [] as $ws) {
+        foreach ($nodes as $node) {
+            $base = $node->scheme . '://' . $node->fqdn . ':' . $node->daemonListen;
+            try {
+                $resp = Http::withToken($node->getDecryptedKey())
+                    ->withOptions(['verify' => !$this->insecureTls()])->timeout(8)
+                    ->get($base . '/api/servers');
+                if (!$resp->successful()) continue;
+            } catch (\Exception $e) {
+                continue; // node down already alerted by checkNode()
+            }
+
+            foreach ($resp->json() ?? [] as $ws) {
             $uuid = $ws['configuration']['uuid'] ?? null;
             if (!$uuid) continue;
             $server = Server::where('uuid', $uuid)->first();
@@ -194,6 +196,7 @@ class DiscordNotifierCommand extends Command
                     0xE67E22
                 );
             }
+        }
         }
     }
 
