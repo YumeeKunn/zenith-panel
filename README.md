@@ -127,7 +127,3 @@ Pterodactyl 2.0 is in open beta. Zenith builds on **v1.15.2 (stable)** and ships
 ## 📄 License
 
 MIT — same as Pterodactyl. See [LICENSE.md](LICENSE.md). Original panel by [Dane Everitt & contributors](https://github.com/pterodactyl/panel).
-
-## 🇮🇳 हिंदी/Hinglish docs?
-
-See [README.hi.md](README.hi.md) for the Hinglish version.

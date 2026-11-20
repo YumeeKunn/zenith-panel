@@ -149,7 +149,7 @@ SSLFIX
   update-ca-certificates
   echo "  (self-signed cert — browser warning expected on IP installs)"
 else
-  certbot --nginx -d "$FQDN" --non-interactive --agree-tos -m "admin@$FQDN" || echo "  (certbot failed — SSL manually configure karo)"
+  certbot --nginx -d "$FQDN" --non-interactive --agree-tos -m "admin@$FQDN" || echo "  (certbot failed — configure SSL manually)"
 fi
 nginx -t && systemctl reload nginx
 
@@ -187,6 +187,6 @@ echo "  DB pass:  $DB_PASS (also in /var/www/pterodactyl/.env)"
 echo ""
 echo "  Next:"
 echo "   1. Admin login banao (command upar)"
-echo "   2. Admin → Zenith Control → Discord webhook set karo"
+echo "   2. Admin → Zenith Control → set your Discord webhook"
 echo "   3. Wings install (optional): official guide ya docker"
 bold "=============================================="
