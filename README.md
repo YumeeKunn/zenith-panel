@@ -104,6 +104,21 @@ php artisan zenith:announce "Maintenance tonight 2AM" --type=warning
 php artisan zenith:logo https://.../logo.png
 ```
 
+## 🔒 Built-in security
+
+Zenith's installer hardens the box by default:
+
+- **UFW firewall** — allowlist-only (web, SSH rate-limited, Wings, game ports)
+- **Redis password** — generated + wired into the panel
+- **OPcache + JIT** — validate_timestamps off in production, expose_php off
+- **nginx rate limiting** — login endpoint (6/min sustained, burst 10) → 429 for brute force
+- **HSTS + security headers** + `server_tokens off`
+- **2FA required for admins** — enroll at first admin login
+- **MariaDB tuning** — 2GB buffer pool, O_DIRECT flush, slow-query log
+- **Daily DB backups** — 14-day retention, includes `.env` (APP_KEY)
+- **Unattended security upgrades** — automatic patching
+- **`.env` locked down** — 640 root:www-data
+
 ## 📦 What's different from upstream
 
 ```

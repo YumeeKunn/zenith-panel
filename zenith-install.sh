@@ -167,6 +167,116 @@ www-data ALL=(root) NOPASSWD: ZENITH_SVC, ZENITH_NOTIFY, ZENITH_LOGS
 SUDO
 chmod 440 /etc/sudoers.d/zenith-admin
 
+step "9.5 — Zenith hardening (OPcache/JIT, rate limits, firewall, 2FA)"
+
+# PHP performance + hardening
+cat > /etc/php/8.3/fpm/conf.d/99-zenith-perf.ini <<'PHPINI'
+opcache.memory_consumption=256
+opcache.interned_strings_buffer=16
+opcache.max_accelerated_files=20000
+opcache.validate_timestamps=0
+opcache.revalidate_freq=0
+opcache.jit=tracing
+opcache.jit_buffer_size=64M
+expose_php=Off
+PHPINI
+cat > /etc/php/8.3/cli/conf.d/99-zenith-perf.ini <<'PHPCLI'
+opcache.memory_consumption=192
+opcache.max_accelerated_files=20000
+expose_php=Off
+PHPCLI
+systemctl restart php8.3-fpm
+
+# MariaDB tuning
+cat > /etc/mysql/mariadb.conf.d/99-tuning.cnf <<'MARIADB'
+[mariadb]
+innodb_buffer_pool_size = 2G
+innodb_log_file_size = 256M
+max_connections = 300
+thread_cache_size = 32
+table_open_cache = 4096
+innodb_flush_method = O_DIRECT
+slow_query_log = ON
+long_query_time = 2
+MARIADB
+systemctl restart mariadb
+
+# Redis password (defense in depth)
+REDIS_PASS="$(openssl rand -hex 16)"
+sed -i "s/^# requirepass foobared/requirepass $REDIS_PASS/" /etc/redis/redis.conf
+systemctl restart redis-server
+set_env REDIS_PASSWORD "$REDIS_PASS"
+cd "$PANEL_DIR"
+php artisan config:clear >/dev/null 2>&1
+rm -f bootstrap/cache/config.php
+php artisan config:cache >/dev/null 2>&1
+systemctl restart php8.3-fpm pteroq
+
+# .env permissions
+chown root:www-data "$PANEL_DIR/.env"
+chmod 640 "$PANEL_DIR/.env"
+
+# Laravel caches (faster panel)
+cd "$PANEL_DIR"
+php artisan route:cache >/dev/null 2>&1 || true
+php artisan view:cache >/dev/null 2>&1 || true
+
+# nginx: HSTS + asset cache + login rate limit (vhost patch)
+cat > /etc/nginx/conf.d/zenith-ratelimit.conf <<'RLCONF'
+limit_req_zone $binary_remote_addr zone=zenith_login:10m rate=30r/m;
+limit_req_zone $binary_remote_addr zone=zenith_api:10m rate=120r/m;
+limit_req_status 429;
+RLCONF
+python3 - <<'NGFIX'
+import re
+p = "/etc/nginx/sites-available/pterodactyl.conf"
+s = open(p).read()
+if "Strict-Transport-Security" not in s:
+    s = s.replace(
+        "    add_header Referrer-Policy strict-origin-when-cross-origin;",
+        "    add_header Referrer-Policy strict-origin-when-cross-origin;\n    add_header Strict-Transport-Security \"max-age=31536000; includeSubDomains\" always;"
+    )
+if "location /assets/" not in s:
+    s = s.replace("    location ~ \\.php$ {", """    location /assets/ {
+        expires 30d;
+        add_header Cache-Control "public, immutable";
+        add_header X-Content-Type-Options nosniff;
+    }
+
+    location = /auth/login {
+        limit_req zone=zenith_login burst=10 nodelay;
+        include fastcgi_params;
+        fastcgi_param SCRIPT_FILENAME $document_root/index.php;
+        fastcgi_pass unix:/run/php/php8.3-fpm.sock;
+    }
+
+    location ~ \\.php$ {""", 1)
+open(p, "w").write(s)
+NGFIX
+sed -i 's/# server_tokens off;/server_tokens off;/' /etc/nginx/nginx.conf
+nginx -t && systemctl reload nginx
+
+# 2FA required for admins (enroll at next admin login)
+mysql panel -e "INSERT INTO settings (\`key\`, value) VALUES ('pterodactyl:auth:2fa_required', '1') ON DUPLICATE KEY UPDATE value='1';" 2>/dev/null ||   mysql -e "INSERT INTO panel.settings (\`key\`, value) VALUES ('pterodactyl:auth:2fa_required', '1') ON DUPLICATE KEY UPDATE value='1';"
+
+# Firewall (allowlist: web, ssh, wings, game ports)
+if command -v ufw >/dev/null; then
+  ufw allow 80/tcp >/dev/null; ufw allow 443/tcp >/dev/null
+  ufw limit 44818/tcp >/dev/null 2>&1 || ufw limit 22/tcp >/dev/null
+  ufw allow 8080/tcp >/dev/null; ufw allow 2022/tcp >/dev/null
+  ufw default deny incoming >/dev/null
+  ufw --force enable
+fi
+
+# Auto security updates
+apt-get install -y -qq unattended-upgrades >/dev/null
+cat > /etc/apt/apt.conf.d/20auto-upgrades <<'AUTO'
+APT::Periodic::Update-Package-Lists "1";
+APT::Periodic::Unattended-Upgrade "1";
+AUTO
+systemctl unmask apt-daily-upgrade.timer >/dev/null 2>&1
+systemctl enable --now apt-daily-upgrade.timer >/dev/null 2>&1
+
 # DB backup + health monitor (bonus from Zenith)
 cat > /usr/local/bin/ptero-db-backup.sh <<'BK'
 #!/bin/bash
