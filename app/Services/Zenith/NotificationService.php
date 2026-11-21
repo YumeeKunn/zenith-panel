@@ -28,6 +28,7 @@ class NotificationService
         'host_disk' => ['label' => 'Host Disk Full', 'threshold' => 90, 'hint' => 'Node machine ki disk'],
         'backup' => ['label' => 'Backup Stale', 'threshold' => null, 'hint' => 'Daily backup 26h+ ruk jaye to'],
         'watchdog' => ['label' => 'Watchdog Actions', 'threshold' => null, 'hint' => 'Auto-suspend hote waqt'],
+        'wings_health' => ['label' => 'Wings Daemon Health', 'threshold' => null, 'hint' => 'Wings RAM ballooning / CPU spikes'],
         'resolved' => ['label' => 'Recovered / Resolved', 'threshold' => null, 'hint' => 'Issue clear hone pe green message'],
     ];
 

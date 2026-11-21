@@ -1,26 +1,59 @@
-import React from 'react';
-import BoringAvatar, { AvatarProps } from 'boring-avatars';
-import { useStoreState } from '@/state/hooks';
+import BoringAvatar from 'boring-avatars';
+import { useCurrentUser } from '@/api/account/queries';
+import { replaceable, useSkin } from '@/themes/skins';
 
-const palette = ['#FFAD08', '#EDD75A', '#73B06F', '#0C8F8F', '#587291'];
+const palette = ['var(--chart-1)', 'var(--chart-2)', 'var(--chart-3)', 'var(--chart-4)', 'var(--chart-5)'];
 
-type Props = Omit<AvatarProps, 'colors'>;
+export type AvatarVariant = 'beam' | 'marble' | 'pixel' | 'sunset' | 'ring' | 'bauhaus';
 
-const _Avatar = ({ variant = 'beam', ...props }: AvatarProps) => (
-    <BoringAvatar colors={palette} variant={variant} {...props} />
-);
+export interface AvatarProps {
+    /** Seeds the generated pattern; the panel uses a user's UUID. */
+    name: string;
+    size?: number | string;
+    variant?: AvatarVariant;
+    square?: boolean;
+    title?: boolean;
+    className?: string;
+    /** An uploaded picture drawn in place of the pattern, such as a user's `avatar`. */
+    image?: string | null;
+}
 
-const _UserAvatar = ({ variant = 'beam', ...props }: Omit<Props, 'name'>) => {
-    const uuid = useStoreState((state) => state.user.data?.uuid);
+function CoreAvatar({ variant = 'beam', image, className, ...props }: AvatarProps) {
+    const ui = useSkin('Avatar', { variant });
 
-    return <BoringAvatar colors={palette} name={uuid || 'system'} variant={variant} {...props} />;
+    if (image) {
+        // Shaped and sized like the pattern: round unless `square`, and as wide as its box without a `size`.
+        return (
+            <img
+                src={image}
+                alt={props.title ? props.name : ''}
+                style={{
+                    width: props.size ?? '100%',
+                    height: props.size,
+                    aspectRatio: '1',
+                    objectFit: 'cover',
+                    borderRadius: props.square ? undefined : '50%',
+                }}
+                {...ui('root', className)}
+            />
+        );
+    }
+
+    return <BoringAvatar colors={palette} variant={variant} {...props} {...ui('root', className)} />;
+}
+
+const _Avatar = replaceable('Avatar', CoreAvatar);
+
+const UserAvatar = (props: Omit<AvatarProps, 'name'>) => {
+    const user = useCurrentUser();
+
+    return <_Avatar name={user.uuid} image={user.avatar} {...props} />;
 };
 
-_Avatar.displayName = 'Avatar';
-_UserAvatar.displayName = 'Avatar.User';
+UserAvatar.displayName = 'Avatar.User';
 
 const Avatar = Object.assign(_Avatar, {
-    User: _UserAvatar,
+    User: UserAvatar,
 });
 
 export default Avatar;

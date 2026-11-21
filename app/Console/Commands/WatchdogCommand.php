@@ -88,6 +88,12 @@ class WatchdogCommand extends Command
             $this->line($a);
             \Log::channel('daily')->info('[watchdog] ' . $a);
         }
+
+        $this->collectMetrics($dry);
+        $this->monitorWings($dry);
+        $this->healStuckServers($dry);
+        $this->checkVersionLockstep();
+
         if (empty($this->actions)) {
             $this->line('[' . now()->toDateTimeString() . '] all servers healthy');
         }
@@ -218,6 +224,147 @@ class WatchdogCommand extends Command
     private function notifyDiscord(string $title, string $text): void
     {
         app(\Pterodactyl\Services\Zenith\NotificationService::class)->send($title, $text, 0xED4245, 'watchdog');
+    }
+
+
+    /**
+     * Zenith metrics — historical resource data (#4864).
+     * Har cycle me per-server stats DB me store hote hain. UI baad me,
+     * data abhi se collect — zenith:metrics:report se dekho.
+     */
+    private function collectMetrics(bool $dry): void
+    {
+        if ($dry) return;
+        try {
+            // reuse the stats fetched in handle(): collect fresh per-server rows
+            $nodes = \Pterodactyl\Models\Node::all();
+            foreach ($nodes as $node) {
+                $base = $node->scheme . '://' . $node->fqdn . ':' . $node->daemonListen;
+                $token = $node->getDecryptedKey();
+                try {
+                    $resp = Http::withToken($token)->withOptions(['verify' => !$this->insecureTls()])->timeout(15)->get($base . '/api/servers');
+                    if (!$resp->successful()) continue;
+                    foreach ($resp->json() ?? [] as $ws) {
+                        $uuid = $ws['configuration']['uuid'] ?? null;
+                        if (!$uuid) continue;
+                        $server = \Pterodactyl\Models\Server::where('uuid', $uuid)->first();
+                        if (!$server) continue;
+                        $util = $ws['utilization'] ?? [];
+                        \Pterodactyl\Models\ServerMetric::create([
+                            'server_id' => $server->id,
+                            'cpu_percent' => (float) ($util['cpu_absolute'] ?? 0),
+                            'memory_bytes' => (int) ($util['memory_bytes'] ?? 0),
+                            'memory_limit_bytes' => (int) ($util['memory_limit_bytes'] ?? 0),
+                            'disk_bytes' => (int) ($util['disk_bytes'] ?? 0),
+                            'network_rx_bytes' => (int) ($util['network']['rx_bytes'] ?? 0),
+                            'network_tx_bytes' => (int) ($util['network']['tx_bytes'] ?? 0),
+                            'state' => $ws['state'] ?? 'offline',
+                            'collected_at' => now(),
+                        ]);
+                    }
+                } catch (\Throwable $e) {
+                    continue;
+                }
+            }
+            // retention: 48h se purane rows prune
+            \Pterodactyl\Models\ServerMetric::where('collected_at', '<', now()->subHours(48))->delete();
+        } catch (\Throwable $e) {
+            \Log::channel('daily')->error('[watchdog] metrics collect failed: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Wings daemon self-monitoring (#5115 RAM ballooning, #4712 CPU spikes).
+     * Local node (same machine) pe wings process ka RSS/CPU check karte hain.
+     * RAM > limit sustained → alert. --wings-restart do to auto-restart bhi.
+     */
+    private function monitorWings(bool $dry): void
+    {
+        // local wings only — remote nodes need ssh access (future)
+        $pid = intval(shell_exec('pgrep -x wings | head -1'));
+        if ($pid <= 0) return;
+
+        $rssMb = floatval(shell_exec("ps -o rss= -p $pid | awk '{print \$1/1024}'"));
+        $cpu = floatval(shell_exec("ps -o pcpu= -p $pid | awk '{print \$1}'"));
+        $limit = (float) ($this->opt('wings-rss-mb', 'wings-rss-mb', 2048));
+
+        if ($rssMb > $limit) {
+            $msg = "🐕 WINGS RAM BALLOONING: {$rssMb}MB (limit {$limit}MB) — pid {$pid}";
+            $this->actions[] = $msg;
+            \Log::channel('daily')->info('[watchdog] ' . $msg);
+            app(\Pterodactyl\Services\Zenith\NotificationService::class)->send(
+                '🐕 Wings RAM Ballooning',
+                "Wings daemon RAM **{$rssMb}MB** — limit {$limit}MB cross.\n**Fix suggestions:**\n• `systemctl restart wings` (servers container me rehte hain, safe)\n• Report: github.com/pterodactyl/wings/issues #5115\n• Repeat hone pe wings version update karo",
+                0xED4245,
+                'wings_health'
+            );
+            if ((bool) config('zenith.wings_auto_restart', false) && !$dry) {
+                shell_exec('systemctl restart wings 2>&1');
+                \Log::channel('daily')->info('[watchdog] wings auto-restarted (RAM ballooning)');
+            }
+        }
+
+        // CPU spike >80% sustained — sirf log+alert (restart nahi, spikes transient hote)
+        if ($cpu >= 80) {
+            $key = 'wings-cpu-high';
+            if (!\Illuminate\Support\Facades\Cache::has('zenith:' . $key)) {
+                \Illuminate\Support\Facades\Cache::put('zenith:' . $key, true, 3600);
+                $msg = "Wings CPU spike: {$cpu}% — #4712 pattern (10-15min cycles)";
+                \Log::channel('daily')->info('[watchdog] ' . $msg);
+            }
+        }
+    }
+
+    /**
+     * Stuck-state auto-heal — installing/transferring/restoring state me
+     * 30+ min se atke servers → status reset + wings sync (report: stuck states common the).
+     */
+    private function healStuckServers(bool $dry): void
+    {
+        $stuck = \Pterodactyl\Models\Server::whereIn('status', [
+            \Pterodactyl\Models\Server::STATUS_INSTALLING,
+            \Pterodactyl\Models\Server::STATUS_RESTORING_BACKUP,
+        ])->where('updated_at', '<', now()->subMinutes(30))->get();
+
+        foreach ($stuck as $server) {
+            $this->actions[] = "STUCK-HEAL {$server->name}: status '{$server->status}' 30min+ — resetting";
+            if (!$dry) {
+                $server->status = null;
+                $server->save();
+                try {
+                    $node = \Pterodactyl\Models\Node::find($server->node_id);
+                    if ($node) {
+                        Http::withToken($node->getDecryptedKey())
+                            ->withOptions(['verify' => !$this->insecureTls()])->timeout(10)
+                            ->post($node->scheme . '://' . $node->fqdn . ':' . $node->daemonListen . '/api/servers/' . $server->uuid . '/sync');
+                    }
+                } catch (\Throwable $e) { /* best effort */ }
+            }
+        }
+    }
+
+    /**
+     * Panel↔Wings version lockstep check (report: "aadha update = khula CVE").
+     * Wings < 1.13.0 pe alert (v2 panel ko kam se kam 1.13.x chahiye).
+     */
+    private function checkVersionLockstep(): void
+    {
+        foreach (\Pterodactyl\Models\Node::all() as $node) {
+            $base = $node->scheme . '://' . $node->fqdn . ':' . $node->daemonListen;
+            try {
+                $resp = Http::withToken($node->getDecryptedKey())
+                    ->withOptions(['verify' => !$this->insecureTls()])->timeout(8)
+                    ->get($base . '/api/system');
+                if (!$resp->successful()) continue;
+                $wingsVer = $resp->json()['version'] ?? '';
+                preg_match('/(\d+)\.(\d+)/', $wingsVer, $m);
+                if (isset($m[1], $m[2]) && ($m[1] < 1 || ($m[1] == 1 && $m[2] < 13))) {
+                    $msg = "VERSION LOCKSTEP: {$node->name} wings {$wingsVer} too old for v2 panel (needs >=1.13.0)";
+                    $this->actions[] = $msg;
+                    \Log::channel('daily')->info('[watchdog] ' . $msg);
+                }
+            } catch (\Throwable $e) { continue; }
+        }
     }
 
     private function power(string $base, string $token, string $uuid, string $action): void

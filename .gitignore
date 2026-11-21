@@ -8,4 +8,3 @@ public/assets/*
 !public/assets/svgs
 .DS_Store
 *.log
-.blueprint/

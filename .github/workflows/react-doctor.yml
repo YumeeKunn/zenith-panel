@@ -1,0 +1,44 @@
+name: React Doctor
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    branches:
+      - "2.0-develop"
+  push:
+    branches:
+      - "2.0-develop"
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+  statuses: write
+
+concurrency:
+  group: react-doctor-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  react-doctor:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      # Fork pull requests always get a read-only token, whatever is declared above,
+      # so they skip the comment and status steps. The job still passes or fails and
+      # the full report is in the run summary.
+      CAN_WRITE: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
+    steps:
+      # Full history so pull requests can diff against the merge base and only report new issues.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      # Pull requests fail on new error-level findings; pushes only record the score.
+      - uses: millionco/react-doctor@695e46eee203a5d1855020191aa7e9c010a1250e # v2.4.0
+        with:
+          blocking: error
+          comment: ${{ env.CAN_WRITE }}
+          review-comments: ${{ env.CAN_WRITE }}
+          commit-status: ${{ env.CAN_WRITE }}

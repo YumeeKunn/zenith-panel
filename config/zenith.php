@@ -18,4 +18,6 @@ return [
 
     // Self-signed cert installs (IP) — wings TLS verify toggle
     'insecure_tls' => env('ZENITH_VERIFY_TLS') === null ? true : (env('ZENITH_VERIFY_TLS') === 'false'),
+    // Wings RAM ballooning pe auto-restart (default off — manual restart safe)
+    'wings_auto_restart' => env('ZENITH_WINGS_AUTO_RESTART') === 'true',
 ];
