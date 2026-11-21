@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, v2]
   pull_request:
 
 jobs:
@@ -48,9 +48,13 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
-      - name: Install yarn
-        run: npm install -g yarn
-      - name: Install dependencies
-        run: yarn install --no-progress || yarn install --no-progress --ignore-engines
-      - name: Build production assets
-        run: yarn build:production
+      - name: Build (v2 = npm/vite, v1 = yarn/webpack)
+        run: |
+          if [ -f package-lock.json ]; then
+            npm install
+            npm run build:production
+          else
+            npm install -g yarn
+            yarn install --no-progress || yarn install --no-progress --ignore-engines
+            yarn build:production
+          fi
