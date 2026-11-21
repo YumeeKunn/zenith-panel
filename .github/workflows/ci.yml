@@ -51,7 +51,8 @@ jobs:
       - name: Build (v2 = npm/vite, v1 = yarn/webpack)
         run: |
           if [ -f package-lock.json ]; then
-            npm install
+            npm config set allow-scripts=true --location=user || true
+            npm install --legacy-peer-deps || npm install
             npm run build:production
           else
             npm install -g yarn
