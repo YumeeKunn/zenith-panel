@@ -195,7 +195,11 @@ class WatchdogCommand extends Command
             return;
         }
         try {
-            app(SuspensionService::class)->toggle($server, SuspensionService::ACTION_SUSPEND);
+            $server->status = 'suspended';
+            $server->save();
+            try {
+                app(\Pterodactyl\Services\Daemon\ServerClient::class)->setServer($server)->sync();
+            } catch (\Throwable $e) { /* wings sync best-effort */ }
             $this->actions[] = "  SUSPENDED {$server->name}: {$reason}";
             $this->notifyDiscord(
                 "🐕 Watchdog SUSPENDED server",

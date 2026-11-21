@@ -25,7 +25,7 @@ use Pterodactyl\Services\Servers\SuspensionService;
  */
 class ServerMoverCommand extends Command
 {
-    protected $signature = 'ptero:mover
+    protected $signature = 'zenith:mover
         {server : Server ID or UUID}
         {--to= : Target node ID}
         {--allocation= : Target allocation ID on new node}
@@ -48,7 +48,7 @@ class ServerMoverCommand extends Command
 
         $toNode = Node::find($this->option('to'));
         if (!$toNode) {
-            $this->error('Target node not found. Usage: ptero:mover <server> --to=<nodeId> --allocation=<allocId>');
+            $this->error('Target node not found. Usage: zenith:mover <server> --to=<nodeId> --allocation=<allocId>');
             return 1;
         }
         if ($toNode->id === $server->node_id) {
@@ -107,20 +107,17 @@ class ServerMoverCommand extends Command
         }
 
         // ---- SAFETY: suspend during transfer ----
-        try {
-            app(SuspensionService::class)->toggle($server, SuspensionService::ACTION_SUSPEND);
-            $this->info('✓ server suspended (prevents writes mid-copy)');
-        } catch (\Exception $e) {
-            $this->warn('suspend failed: ' . $e->getMessage());
-        }
+        $server->status = 'suspended';
+        $server->save();
+        $this->info('✓ server suspended (prevents writes mid-copy)');
 
         // ---- Trigger native transfer ----
         $this->line('starting panel transfer...');
         try {
-            app(\Pterodactyl\Services\Servers\ServerTransferService::class)->handle($server, $toNode->id, $allocId);
+            app(InitiatesTransfers::class)->initiate($server, $toNode, (int) $allocId, []);
             $this->info('✓ transfer initiated — panel will stream files to target node');
             $this->line('monitor: Admin → Servers → ' . $server->name . ' (transfer status)');
-            $this->line('if it deadlocks: php artisan ptero:mover ' . $server->id . ' --rollback');
+            $this->line('if it deadlocks: php artisan zenith:mover ' . $server->id . ' --rollback');
             return 0;
         } catch (\Exception $e) {
             $this->error('TRANSFER START FAILED: ' . $e->getMessage());
@@ -155,12 +152,9 @@ class ServerMoverCommand extends Command
             }
         }
 
-        try {
-            app(SuspensionService::class)->toggle($server, SuspensionService::ACTION_UNSUSPEND);
-            $this->info('✓ server unsuspended');
-        } catch (\Exception $e) {
-            $this->warn('unsuspend failed (suspend manually): ' . $e->getMessage());
-        }
+        $server->status = null;
+        $server->save();
+        $this->info('✓ server unsuspended');
 
         $this->info('Rollback complete. Server is back on node ' . $server->node_id);
         return 0;

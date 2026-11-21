@@ -1,7 +1,7 @@
 # Zenith Panel 🛡️
 
 > **Enhanced Pterodactyl** — the game server panel with the features Pterodactyl keeps rejecting.
-> Built on [Pterodactyl 1.15.2](https://github.com/pterodactyl/panel) (stable) — everything Pterodactyl does, plus Zenith systems on top.
+> Built on Pterodactyl **v2.0.0-beta.3** (Laravel 13) — everything Pterodactyl does, plus Zenith systems on top.
 
 ![panel](https://img.shields.io/badge/panel-1.15.2-blue) ![license](https://img.shields.io/badge/license-MIT-green) ![watchdog](https://img.shields.io/badge/watchdog-built--in-orange) ![discord](https://img.shields.io/badge/discord-notifier-7289DA) ![multi--node](https://img.shields.io/badge/multi--node-supported-success)
 

@@ -3,7 +3,7 @@
 namespace Pterodactyl\Services\Zenith;
 
 use Illuminate\Support\Facades\Http;
-use Pterodactyl\Contracts\Repository\SettingsRepositoryInterface;
+use Pterodactyl\Models\Setting;
 
 /**
  * Zenith NotificationService — simple, flexible alert settings.
@@ -33,12 +33,6 @@ class NotificationService
 
     public const CHANNELS = ['off', 'discord', 'generic', 'both'];
 
-    private SettingsRepositoryInterface $settings;
-
-    public function __construct(SettingsRepositoryInterface $settings)
-    {
-        $this->settings = $settings;
-    }
 
     /** Get alert config: ['channel' => string, 'threshold' => int|null]. */
     public function alert(string $type): array
@@ -60,7 +54,7 @@ class NotificationService
         if (self::ALERT_TYPES[$type]['threshold'] !== null) {
             $payload['threshold'] = $threshold ?? self::ALERT_TYPES[$type]['threshold'];
         }
-        $this->settings->set('zenith::alert:' . $type, json_encode($payload));
+        Setting::updateOrCreate(['key' => 'zenith::alert:' . $type], ['value' => json_encode($payload)]);
     }
 
     /** Should this alert type go to Discord? */
@@ -172,7 +166,7 @@ class NotificationService
 
     private function db(string $short): ?string
     {
-        $v = $this->settings->get('zenith::' . $short);
+        $v = Setting::where('key', 'zenith::' . $short)->value('value');
         return ($v !== null && $v !== '') ? $v : null;
     }
 }
