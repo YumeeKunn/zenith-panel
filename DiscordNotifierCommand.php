@@ -68,7 +68,7 @@ class DiscordNotifierCommand extends Command
         foreach ($this->alerts as $a) {
             $this->line($a['text']);
             \Log::channel('daily')->info('[zenith-notify] ' . $a['text']);
-            $this->send($a['title'], $a['text'], $a['color']);
+            $this->send($a['title'], $a['text'], $a['color'], $a['type'] ?? 'general');
         }
 
         // resolved messages
@@ -101,17 +101,17 @@ class DiscordNotifierCommand extends Command
                 // fall back to docker/host metrics via local shell if same machine
                 $hostCpu = $this->hostCpu();
                 $hostMem = $this->hostMem();
-                if ($hostCpu !== null && $hostCpu >= (float) ($this->dbSetting('notify:node-cpu-warn') ?? $this->option('node-cpu-warn'))) {
+                if ($hostCpu !== null && $hostCpu >= (float) (app(\Pterodactyl\Services\Zenith\NotificationService::class)->threshold('node_cpu') ?? $this->option('node-cpu-warn'))) {
                     $this->alertOnce(
-                        "node-load:{$node->id}:cpu",
+                        "node-cpu:{$node->id}",
                         "🔔 **Node HIGH CPU** — `{$node->name}` host CPU **{$hostCpu}%**",
                         "CPU sustained above " . $this->option('node-cpu-warn') . "%.\n**Fix suggestions:**\n• `docker stats` se heavy container dhundo\n• `ptero:watchdog --cpu-threshold=90` cutoffs already chal rahe hain\n• Permanent fix: node me aur CPU / limits kam karo\n• Load spike temporary hai to wait (watchdog suspends repeat offenders)",
                         0xE67E22
                     );
                 }
-                if ($hostMem !== null && $hostMem >= (float) ($this->dbSetting('notify:node-mem-warn') ?? $this->option('node-mem-warn'))) {
+                if ($hostMem !== null && $hostMem >= (float) (app(\Pterodactyl\Services\Zenith\NotificationService::class)->threshold('node_ram') ?? $this->option('node-mem-warn'))) {
                     $this->alertOnce(
-                        "node-load:{$node->id}:mem",
+                        "node-ram:{$node->id}",
                         "🔔 **Node HIGH RAM** — `{$node->name}` host RAM **{$hostMem}%**",
                         "RAM usage above " . $this->option('node-mem-warn') . "%.\n**Fix suggestions:**\n• `docker stats --no-stream` se sabse heavy server dhundo\n• Us server ki memory limit kam karo (admin → server → build)\n• OOM kills se bachne ke liye watchdog OOM-abuse auto-suspend on hai",
                         0xE67E22
@@ -119,7 +119,7 @@ class DiscordNotifierCommand extends Command
                 }
                 // Host disk check (root + wings volumes)
                 $hostDisk = $this->hostDisk('/');
-                if ($hostDisk !== null && $hostDisk >= (float) ($this->dbSetting('notify:host-disk-warn') ?? 90)) {
+                if ($hostDisk !== null && $hostDisk >= (float) (app(\Pterodactyl\Services\Zenith\NotificationService::class)->threshold('host_disk') ?? 90)) {
                     $this->alertOnce(
                         "node-disk:{$node->id}",
                         "💾 **Host DISK FULL** — `{$node->name}` root disk **{$hostDisk}%**",
@@ -159,9 +159,9 @@ class DiscordNotifierCommand extends Command
 
         // Admin panel (Zenith Control) DB settings override CLI defaults
         $cfg = fn (string $key, string $opt, ?float $def = null) => (float) ($this->dbSetting($key) ?? ($this->option($opt) ?: $def));
-        $cpuWarn = $cfg('notify:cpu-warn', 'cpu-warn', 85);
-        $memWarn = $cfg('notify:mem-warn', 'mem-warn', 90);
-        $diskWarn = $cfg('notify:disk-warn', 'disk-warn', 90);
+        $cpuWarn = (float) (app(\Pterodactyl\Services\Zenith\NotificationService::class)->threshold('server_cpu') ?? $this->option('cpu-warn'));
+        $memWarn = (float) (app(\Pterodactyl\Services\Zenith\NotificationService::class)->threshold('server_ram') ?? $this->option('mem-warn'));
+        $diskWarn = (float) (app(\Pterodactyl\Services\Zenith\NotificationService::class)->threshold('server_disk') ?? $this->option('disk-warn'));
 
         foreach ($nodes as $node) {
             $base = $node->scheme . '://' . $node->fqdn . ':' . $node->daemonListen;
@@ -195,7 +195,7 @@ class DiscordNotifierCommand extends Command
 
             if ($cpuPct >= $cpuWarn) {
                 $this->alertOnce(
-                    "srv-cpu:{$uuid}",
+                    "server-cpu:{$uuid}",
                     "📊 **Server HIGH CPU** — `{$name}` **{$cpuPct}%** (limit {$server->cpu}%)",
                     "CPU {$cpuPct}% sustained near/at limit.\n**Fix suggestions:**\n• Server console me `top`/lag spike check karo\n• World/chunks bade ho to pregen ya view-distance kam karo\n• CPU limit badhao (admin → build) ya server restart\n• Repeat offender? watchdog auto-suspend karega ({$cpuWarn}%+ sustained)",
                     0xE67E22
@@ -203,7 +203,7 @@ class DiscordNotifierCommand extends Command
             }
             if ($memPct >= $memWarn) {
                 $this->alertOnce(
-                    "srv-mem:{$uuid}",
+                    "server-ram:{$uuid}",
                     "📊 **Server HIGH RAM** — `{$name}` **{$memPct}%** ({$server->memory}MB limit)",
                     "RAM {$memPct}% — OOM crash ka risk!\n**Fix suggestions:**\n• JVM flags me Xmx check karo (panel startup config)\n• Memory limit badhao ya unnecessary plugins hatao\n• OOM hua to watchdog crash-counter hit karega (3 crashes = suspend)",
                     0xE67E22
@@ -211,7 +211,7 @@ class DiscordNotifierCommand extends Command
             }
             if ($diskPct >= $diskWarn) {
                 $this->alertOnce(
-                    "srv-disk:{$uuid}",
+                    "server-disk:{$uuid}",
                     "📊 **Server DISK** — `{$name}` **{$diskPct}%** ({$server->disk}MB limit)",
                     "Disk {$diskPct}% full.\n**Fix suggestions:**\n• Purane backups/logs delete karo (file manager)\n• `du -sh` se bade folders dhundo\n• Disk limit badhao ya server archive karo",
                     0xE67E22
@@ -232,10 +232,27 @@ class DiscordNotifierCommand extends Command
             if (!in_array($key, $nowActive)) {
                 Cache::forget('zenith:alert-cool:' . $key);
                 $label = str_replace(['node-down:', 'node-load:', 'srv-cpu:', 'srv-mem:', 'srv-disk:'], '', $key);
-                $this->send('✅ Resolved', "`{$label}` wala issue clear ho gaya hai. Sab normal!", 0x57F287);
+                $this->send('✅ Resolved', "`{$label}` wala issue clear ho gaya hai. Sab normal!", 0x57F287, 'resolved');
             }
         }
         Cache::put('zenith:active-alerts', $nowActive, 7200);
+    }
+
+    /** Alert type (routing key) derives from the alert key prefix. */
+    private function typeOf(string $key): string
+    {
+        $map = [
+            'node-down' => 'node_down',
+            'node-cpu' => 'node_cpu',
+            'node-ram' => 'node_ram',
+            'host-disk' => 'host_disk',
+            'server-cpu' => 'server_cpu',
+            'server-ram' => 'server_ram',
+            'server-disk' => 'server_disk',
+            'backup-stale' => 'backup',
+        ];
+        $prefix = explode(':', $key)[0] ?? '';
+        return $map[$prefix] ?? 'general';
     }
 
     private function alertOnce(string $key, string $title, string $text, int $color, bool $urgent = false): void
@@ -245,32 +262,25 @@ class DiscordNotifierCommand extends Command
         if (Cache::has($coolKey)) {
             return; // still in cooldown, skip repeat alert
         }
+        // channel 'off' ho to alert generate hi na ho
+        $svc = app(\Pterodactyl\Services\Zenith\NotificationService::class);
+        if (!$svc->wantsDiscord($this->typeOf($key)) && !$svc->wantsGeneric($this->typeOf($key))) {
+            return; // admin ne ye alert disable kiya hai
+        }
         Cache::put($coolKey, true, $cooldown);
-        $this->alerts[] = ['key' => $key, 'title' => $title, 'text' => $title . "\n" . $text, 'color' => $color];
+        $this->alerts[] = ['key' => $key, 'title' => $title, 'text' => $title . "\n" . $text, 'color' => $color, 'type' => $this->typeOf($key)];
     }
 
-    private function send(string $title, string $text, int $color): void
+    private function send(string $title, string $text, int $color, string $type = 'general'): void
     {
-        $payload = ['embeds' => [[
-            'title' => $title,
-            'description' => $text,
-            'color' => $color,
-            'footer' => ['text' => 'Zenith Panel Monitor • ' . now()->format('d M Y H:i') . ' UTC'],
-        ]]];
-
-        try {
-            if (!empty($this->webhook)) {
-                $r = Http::timeout(10)->post($this->webhook, $payload);
-                if (!$r->successful()) $this->error('webhook failed: HTTP ' . $r->status());
-            } elseif (!empty($this->botToken) && !empty($this->channelId)) {
-                $r = Http::withToken($this->botToken)->timeout(10)
-                    ->post('https://discord.com/api/v10/channels/' . $this->channelId . '/messages', $payload);
-                if (!$r->successful()) $this->error('bot send failed: HTTP ' . $r->status() . ' ' . substr($r->body(), 0, 120));
-            } else {
-                $this->error('no delivery target: set ZENITH_DISCORD_WEBHOOK or BOT_TOKEN+CHANNEL_ID');
+        $results = app(\Pterodactyl\Services\Zenith\NotificationService::class)->send($title, $text, $color, $type);
+        foreach ($results as $channel => $result) {
+            if ($result !== 'sent') {
+                $this->error("notification [$channel] failed: $result");
             }
-        } catch (\Exception $e) {
-            $this->error('discord send failed: ' . $e->getMessage());
+        }
+        if (empty($results)) {
+            $this->error('no notification channel configured or alert set to OFF');
         }
     }
 

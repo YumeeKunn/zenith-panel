@@ -47,11 +47,8 @@ class ZenithController extends Controller
             'wdOomLimit' => $this->settings->get('zenith::watchdog:oom-limit', '3'),
             'wdDiskWarn' => $this->settings->get('zenith::watchdog:disk-warn', '90'),
             'discordWebhook' => $this->settings->get('zenith::discord:webhook', ''),
-            'lineToken' => $this->settings->get('zenith::line:token', ''),
-            'lineUser' => $this->settings->get('zenith::line:user', ''),
-            'telegramToken' => $this->settings->get('zenith::telegram:token', ''),
-            'telegramChat' => $this->settings->get('zenith::telegram:chat', ''),
             'genericWebhook' => $this->settings->get('zenith::generic:webhook', ''),
+            'alertsMatrix' => $this->alertsMatrix(),
         ]);
     }
 
@@ -79,19 +76,6 @@ class ZenithController extends Controller
             }
         }
 
-        $channels = [
-            'line_token' => 'line:token',
-            'line_user' => 'line:user',
-            'telegram_token' => 'telegram:token',
-            'telegram_chat' => 'telegram:chat',
-            'generic_webhook' => 'generic:webhook',
-        ];
-        foreach ($channels as $field => $short) {
-            if ($request->has($field)) {
-                $this->settings->set('zenith::' . $short, (string) $request->input($field));
-            }
-        }
-
         if ($request->has('discord_webhook')) {
             $webhook = trim($request->input('discord_webhook'));
             if ($webhook === '') {
@@ -100,6 +84,20 @@ class ZenithController extends Controller
                 $this->settings->set('zenith::discord:webhook', $webhook);
             } else {
                 $this->alert->danger('Discord webhook URL format galat hai — save skip hua.');
+            }
+        }
+
+        // Alert settings matrix — per type: channel dropdown + threshold
+        $svc = app(\Pterodactyl\Services\Zenith\NotificationService::class);
+        foreach (\Pterodactyl\Services\Zenith\NotificationService::ALERT_TYPES as $key => $def) {
+            if ($request->has("alert_{$key}")) {
+                $threshold = null;
+                if ($def['threshold'] !== null) {
+                    $threshold = $request->filled("alert_{$key}_threshold")
+                        ? (int) $request->input("alert_{$key}_threshold")
+                        : $def['threshold'];
+                }
+                $svc->setAlert($key, (string) $request->input("alert_{$key}", 'both'), $threshold);
             }
         }
 
@@ -136,6 +134,18 @@ class ZenithController extends Controller
     }
 
     /** Send a test Discord message right now. */
+    /** Alert settings matrix for the UI: per-type channel + threshold. */
+    private function alertsMatrix(): array
+    {
+        $svc = app(\Pterodactyl\Services\Zenith\NotificationService::class);
+        $matrix = [];
+        foreach (\Pterodactyl\Services\Zenith\NotificationService::ALERT_TYPES as $key => $def) {
+            $cfg = $svc->alert($key);
+            $matrix[$key] = ['label' => $def['label'], 'hint' => $def['hint'], 'hasThreshold' => $def['threshold'] !== null] + $cfg;
+        }
+        return $matrix;
+    }
+
     public function testChannels(): RedirectResponse
     {
         $results = app(\Pterodactyl\Services\Zenith\NotificationService::class)->testAll();

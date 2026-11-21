@@ -213,7 +213,7 @@ class WatchdogCommand extends Command
     /** Zenith: watchdog actions → Discord/LINE/Telegram/whatever channels are configured. */
     private function notifyDiscord(string $title, string $text): void
     {
-        app(\Pterodactyl\Services\Zenith\NotificationService::class)->send($title, $text, 0xED4245);
+        app(\Pterodactyl\Services\Zenith\NotificationService::class)->send($title, $text, 0xED4245, 'watchdog');
     }
 
     private function power(string $base, string $token, string $uuid, string $action): void

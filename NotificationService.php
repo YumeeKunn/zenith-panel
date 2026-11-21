@@ -6,19 +6,33 @@ use Illuminate\Support\Facades\Http;
 use Pterodactyl\Contracts\Repository\SettingsRepositoryInterface;
 
 /**
- * Zenith NotificationService — multi-channel alert fan-out.
+ * Zenith NotificationService — simple, flexible alert settings.
  *
- * Supported channels (any combination, configured via Zenith Control):
- *   - Discord webhook   (embeds, colored)
- *   - LINE Messaging API (plain text push)
- *   - Telegram bot      (plain text, markdown-lite)
- *   - Generic webhook   (POST JSON — ntfy.sh, Slack-compatible, custom)
+ * Alert types: har type ke liye admin set karta hai (Zenith Control):
+ *   - channel: 'off' | 'discord' | 'generic' | 'both'  → kahan bhejna hai
+ *   - threshold: percentage (load/disk types ke liye)  → kitne % pe alert
  *
- * All channel configs read from settings table (Zenith Control editable)
- * with config()/env fallback.
+ * Storage: settings key 'zenith::alert:<type>' = {"channel":"discord","threshold":85}
+ * Missing = default (channel: 'both', threshold: type-specific default).
  */
 class NotificationService
 {
+    /** Alert types with labels + default thresholds. */
+    public const ALERT_TYPES = [
+        'node_down' => ['label' => 'Node Down', 'threshold' => null, 'hint' => 'Node offline ya unreachable hone pe'],
+        'node_cpu' => ['label' => 'Node CPU High', 'threshold' => 90, 'hint' => 'Poore node (host) ka CPU'],
+        'node_ram' => ['label' => 'Node RAM High', 'threshold' => 90, 'hint' => 'Poore node (host) ki RAM'],
+        'server_cpu' => ['label' => 'Server CPU High', 'threshold' => 85, 'hint' => 'Kisi ek game server ka CPU'],
+        'server_ram' => ['label' => 'Server RAM High', 'threshold' => 92, 'hint' => 'Kisi ek game server ki RAM'],
+        'server_disk' => ['label' => 'Server Disk Full', 'threshold' => 90, 'hint' => 'Game server ki disk limit'],
+        'host_disk' => ['label' => 'Host Disk Full', 'threshold' => 90, 'hint' => 'Node machine ki disk'],
+        'backup' => ['label' => 'Backup Stale', 'threshold' => null, 'hint' => 'Daily backup 26h+ ruk jaye to'],
+        'watchdog' => ['label' => 'Watchdog Actions', 'threshold' => null, 'hint' => 'Auto-suspend hote waqt'],
+        'resolved' => ['label' => 'Recovered / Resolved', 'threshold' => null, 'hint' => 'Issue clear hone pe green message'],
+    ];
+
+    public const CHANNELS = ['off', 'discord', 'generic', 'both'];
+
     private SettingsRepositoryInterface $settings;
 
     public function __construct(SettingsRepositoryInterface $settings)
@@ -26,20 +40,111 @@ class NotificationService
         $this->settings = $settings;
     }
 
-    /** Send alert to ALL configured channels. Returns per-channel results. */
-    public function send(string $title, string $text, int $color = 0xE67E22): array
+    /** Get alert config: ['channel' => string, 'threshold' => int|null]. */
+    public function alert(string $type): array
+    {
+        $defaults = self::ALERT_TYPES[$type] ?? ['threshold' => null];
+        $raw = $this->settings->get('zenith::alert:' . $type);
+        $decoded = $raw ? json_decode($raw, true) : null;
+
+        return [
+            'channel' => $decoded['channel'] ?? 'both',
+            'threshold' => $decoded['threshold'] ?? $defaults['threshold'],
+        ];
+    }
+
+    /** Save alert config (channel + optional threshold). */
+    public function setAlert(string $type, string $channel, ?int $threshold = null): void
+    {
+        $payload = ['channel' => in_array($channel, self::CHANNELS) ? $channel : 'both'];
+        if (self::ALERT_TYPES[$type]['threshold'] !== null) {
+            $payload['threshold'] = $threshold ?? self::ALERT_TYPES[$type]['threshold'];
+        }
+        $this->settings->set('zenith::alert:' . $type, json_encode($payload));
+    }
+
+    /** Should this alert type go to Discord? */
+    public function wantsDiscord(string $type): bool
+    {
+        return in_array($this->alert($type)['channel'], ['discord', 'both']);
+    }
+
+    /** Should this alert type go to the generic webhook? */
+    public function wantsGeneric(string $type): bool
+    {
+        return in_array($this->alert($type)['channel'], ['generic', 'both']);
+    }
+
+    /** Threshold for a load-type alert. */
+    public function threshold(string $type): ?float
+    {
+        $t = $this->alert($type)['threshold'];
+        return $t !== null ? (float) $t : null;
+    }
+
+    /**
+     * Send an alert through the channels configured for its type.
+     * Returns per-channel results (empty = channel off / not configured).
+     */
+    public function send(string $title, string $text, int $color = 0xE67E22, string $type = 'general'): array
     {
         $results = [];
+        $plain = $title . "\n" . str_replace(['**', '`'], '', $text);
 
-        // Discord
+        // Discord webhook
+        if ($this->wantsDiscord($type)) {
+            $webhook = $this->db('discord:webhook') ?: config('zenith.discord_webhook');
+            if (!empty($webhook)) {
+                try {
+                    $r = Http::timeout(10)->post($webhook, ['embeds' => [[
+                        'title' => $title,
+                        'description' => $text,
+                        'color' => $color,
+                        'footer' => ['text' => 'Zenith Panel • ' . now()->format('d M Y H:i') . ' UTC'],
+                    ]]]);
+                    $results['discord'] = $r->successful() ? 'sent' : 'HTTP ' . $r->status();
+                } catch (\Throwable $e) {
+                    $results['discord'] = 'error: ' . $e->getMessage();
+                }
+            }
+        }
+
+        // Generic JSON webhook (ntfy.sh, Slack-compatible, custom)
+        if ($this->wantsGeneric($type)) {
+            $generic = $this->db('generic:webhook') ?: config('zenith.generic_webhook');
+            if (!empty($generic)) {
+                try {
+                    $r = Http::timeout(10)->post($generic, [
+                        'title' => $title,
+                        'message' => $plain,
+                        'type' => $type,
+                        'severity' => $color === 0xED4245 ? 'critical' : ($color === 0x57F287 ? 'info' : 'warning'),
+                        'timestamp' => now()->toIso8601String(),
+                    ]);
+                    $results['generic'] = $r->successful() ? 'sent' : 'HTTP ' . $r->status();
+                } catch (\Throwable $e) {
+                    $results['generic'] = 'error: ' . $e->getMessage();
+                }
+            }
+        }
+
+        return $results;
+    }
+
+    /** Send a test ping to every CONFIGURED channel (ignores per-type settings). */
+    public function testAll(): array
+    {
+        $results = [];
+        $plain = '✅ Zenith Panel — test message. Notifications working!';
+
         $webhook = $this->db('discord:webhook') ?: config('zenith.discord_webhook');
         if (!empty($webhook)) {
             try {
                 $r = Http::timeout(10)->post($webhook, ['embeds' => [[
-                    'title' => $title,
-                    'description' => $text,
-                    'color' => $color,
-                    'footer' => ['text' => 'Zenith Panel • ' . now()->format('d M Y H:i') . ' UTC'],
+                    'title' => '✅ Zenith Panel — test',
+                    'description' => $plain,
+                    'color' => 0x57F287,
+                    'footer' => ['text' => 'Zenith Control test'],
                 ]]]);
                 $results['discord'] = $r->successful() ? 'sent' : 'HTTP ' . $r->status();
             } catch (\Throwable $e) {
@@ -47,48 +152,13 @@ class NotificationService
             }
         }
 
-        // LINE Messaging API (plain text — strip markdown)
-        $lineToken = $this->db('line:token') ?: config('zenith.line_token');
-        $lineTo = $this->db('line:user') ?: config('zenith.line_user');
-        if (!empty($lineToken) && !empty($lineTo)) {
-            try {
-                $plain = $title . "\n" . strip_tags(str_replace(['**', '`'], '', $text));
-                $r = Http::withToken($lineToken)->timeout(10)
-                    ->post('https://api.line.me/v2/bot/message/push', [
-                        'to' => $lineTo,
-                        'messages' => [['type' => 'text', 'text' => mb_substr($plain, 0, 4900)]],
-                    ]);
-                $results['line'] = $r->successful() ? 'sent' : 'HTTP ' . $r->status();
-            } catch (\Throwable $e) {
-                $results['line'] = 'error: ' . $e->getMessage();
-            }
-        }
-
-        // Telegram bot
-        $tgToken = $this->db('telegram:token') ?: config('zenith.telegram_token');
-        $tgChat = $this->db('telegram:chat') ?: config('zenith.telegram_chat');
-        if (!empty($tgToken) && !empty($tgChat)) {
-            try {
-                $plain = $title . "\n" . str_replace(['**', '`'], '', $text);
-                $r = Http::timeout(10)->post("https://api.telegram.org/bot{$tgToken}/sendMessage", [
-                    'chat_id' => $tgChat,
-                    'text' => mb_substr($plain, 0, 4000),
-                ]);
-                $results['telegram'] = $r->successful() ? 'sent' : 'HTTP ' . $r->status();
-            } catch (\Throwable $e) {
-                $results['telegram'] = 'error: ' . $e->getMessage();
-            }
-        }
-
-        // Generic webhook (ntfy.sh, Slack-compatible, custom receivers)
         $generic = $this->db('generic:webhook') ?: config('zenith.generic_webhook');
         if (!empty($generic)) {
             try {
-                $plain = $title . "\n" . str_replace(['**', '`'], '', $text);
                 $r = Http::timeout(10)->post($generic, [
-                    'title' => $title,
+                    'title' => '✅ Zenith Panel — test',
                     'message' => $plain,
-                    'severity' => $color === 0xED4245 ? 'critical' : ($color === 0x57F287 ? 'info' : 'warning'),
+                    'severity' => 'info',
                     'timestamp' => now()->toIso8601String(),
                 ]);
                 $results['generic'] = $r->successful() ? 'sent' : 'HTTP ' . $r->status();
@@ -98,16 +168,6 @@ class NotificationService
         }
 
         return $results;
-    }
-
-    /** Send a test ping to every configured channel, return results. */
-    public function testAll(): array
-    {
-        return $this->send(
-            '✅ Zenith Panel — test message',
-            'Notifications configured successfully! Isi channel pe ab alerts aayenge.',
-            0x57F287
-        );
     }
 
     private function db(string $short): ?string

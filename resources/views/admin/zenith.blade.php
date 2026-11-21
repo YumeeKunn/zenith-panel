@@ -165,24 +165,12 @@
                 </div>
 
                 <div class="box box-success">
-                    <div class="box-header with-border"><h3 class="box-title">Notification Channels (koi bhi ya sab)</h3></div>
+                    <div class="box-header with-border"><h3 class="box-title">Notification Channels (Discord + Generic Webhook)</h3></div>
                     <div class="box-body">
                         <div class="form-group">
                             <label><i class="fa fa-comment"></i> Discord Webhook</label>
                             <input type="text" class="form-control" name="discord_webhook" value="{{ old('discord_webhook', $discordWebhook) }}" placeholder="https://discord.com/api/webhooks/...">
                             <p class="text-muted"><small>Channel → Edit → Integrations → Webhooks → New → Copy URL.</small></p>
-                        </div>
-                        <div class="form-group">
-                            <label><i class="fa fa-mobile"></i> LINE Messaging API</label>
-                            <input type="text" class="form-control" name="line_token" value="{{ old('line_token', $lineToken) }}" placeholder="Channel access token ( eyJ... )">
-                            <input type="text" class="form-control" name="line_user" value="{{ old('line_user', $lineUser) }}" placeholder="User/Group ID (U... ya C...)" style="margin-top:6px">
-                            <p class="text-muted"><small>developers.line.biz → Channel → Messaging API → Channel access token + apna User ID.</small></p>
-                        </div>
-                        <div class="form-group">
-                            <label><i class="fa fa-telegram"></i> Telegram Bot</label>
-                            <input type="text" class="form-control" name="telegram_token" value="{{ old('telegram_token', $telegramToken) }}" placeholder="Bot token ( 123456:ABC-... )">
-                            <input type="text" class="form-control" name="telegram_chat" value="{{ old('telegram_chat', $telegramChat) }}" placeholder="Chat ID ( -100... ya 123456 )" style="margin-top:6px">
-                            <p class="text-muted"><small>@BotFather se bot banao → token le. Chat ID: @userinfobot se pucho.</small></p>
                         </div>
                         <div class="form-group">
                             <label><i class="fa fa-bolt"></i> Generic Webhook (ntfy/Slack/custom)</label>
@@ -192,6 +180,48 @@
                     </div>
                     <div class="box-footer">
                         <button type="submit" class="btn btn-sm btn-primary">💾 Save All Settings</button>
+                    </div>
+                </div>
+
+                <div class="box box-info">
+                    <div class="box-header with-border"><h3 class="box-title">Alert Settings — kya bhejna hai, kahan bhejna hai</h3></div>
+                    <div class="box-body">
+                        <table class="table table-condensed" style="margin-bottom:0">
+                            <thead>
+                                <tr>
+                                    <th>Alert</th>
+                                    <th style="width:220px">Bhejo kahan?</th>
+                                    <th style="width:160px">Threshold (%)</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                            @foreach ($alertsMatrix as $key => $row)
+                                <tr>
+                                    <td>
+                                        <strong>{{ $row['label'] }}</strong>
+                                        <p class="text-muted" style="margin:0"><small>{{ $row['hint'] }}</small></p>
+                                    </td>
+                                    <td>
+                                        <input type="hidden" name="alert_{{ $key }}" value="1">
+                                        <select name="alert_{{ $key }}" class="form-control input-sm">
+                                            <option value="both" @if ($row['channel'] === 'both') selected @endif>Discord + Generic</option>
+                                            <option value="discord" @if ($row['channel'] === 'discord') selected @endif>Sirf Discord</option>
+                                            <option value="generic" @if ($row['channel'] === 'generic') selected @endif>Sirf Generic</option>
+                                            <option value="off" @if ($row['channel'] === 'off') selected @endif>OFF (na bhejo)</option>
+                                        </select>
+                                    </td>
+                                    <td>
+                                        @if ($row['hasThreshold'])
+                                            <input type="number" class="form-control input-sm" name="alert_{{ $key }}_threshold" value="{{ old("alert_{$key}_threshold", $row['threshold']) }}" min="1" max="1000">
+                                        @else
+                                            <span class="text-muted">—</span>
+                                        @endif
+                                    </td>
+                                </tr>
+                            @endforeach
+                            </tbody>
+                        </table>
+                        <p class="text-muted"><small>OFF select karo = wo alert band. Baar-baar same alert aaye to "Alert repeat interval" badhao (upar cooldown field).</small></p>
                     </div>
                 </div>
             </div>
