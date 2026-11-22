@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Alert, Button, Input, PageContentBlock, Select, Spinner } from '@pterodactyl/sdk';
-import { httpErrorToHuman } from '@pterodactyl/sdk/api';
+import { http, httpErrorToHuman } from '@pterodactyl/sdk/api';
 
 const CHANNELS = [
     { value: 'both', label: 'Discord + Generic' },
@@ -37,8 +37,12 @@ export default function ZenithAdminScreen() {
     const { isLoading } = useQuery({
         queryKey: ['zenith', 'settings'],
         queryFn: async () => {
-            const { data } = await http.get('/api/admin/extensions/zenith-monitor/settings');
-            setSettings(data);
+            const { data: body } = await http.get('/api/admin/extensions/zenith-monitor/config');
+            const payload = body?.data?.alerts ? body.data : body;
+            if (!payload?.alerts || typeof payload.alerts !== 'object') {
+                throw new Error('Invalid settings response: ' + JSON.stringify(body).slice(0, 200));
+            }
+            setSettings(payload);
             return data;
         },
     });
@@ -57,7 +61,7 @@ export default function ZenithAdminScreen() {
             for (const [type, cfg] of Object.entries(settings.alerts)) {
                 alerts[type] = { channel: cfg.channel, threshold: cfg.has_threshold ? cfg.threshold : null };
             }
-            await http.post('/api/admin/extensions/zenith-monitor/settings', {
+            await http.post('/api/admin/extensions/zenith-monitor/config', {
                 discord_webhook: settings.discord_webhook,
                 generic_webhook: settings.generic_webhook,
                 cooldown: parseInt(String(settings.cooldown)) || 900,

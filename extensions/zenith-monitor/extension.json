@@ -31,6 +31,14 @@
                 "nav": {
                     "label": "Node Graphs"
                 }
+            },
+            {
+                "id": "control",
+                "area": "admin",
+                "path": "zenith-control",
+                "nav": {
+                    "label": "Zenith Control"
+                }
             }
         ]
     },

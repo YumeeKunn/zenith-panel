@@ -5,7 +5,8 @@ import ZenithGraphScreen from './screens/ZenithGraphScreen';
 
 export default definePterodactylExtension({
     setup({ screens }) {
-        screens.register('admin', () => import('./screens/ZenithAdminScreen'));
+        screens.register('main', () => import('./screens/ServerScreen'));
+        screens.register('control', () => import('./screens/ZenithAdminScreen'));
         screens.register('graphs', () => import('./screens/ZenithGraphScreen'));
     },
 });
