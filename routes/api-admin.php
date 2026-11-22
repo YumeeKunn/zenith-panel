@@ -499,5 +499,6 @@ Route::prefix('/zenith')->name('api.admin.zenith')->group(function (): void {
     Route::get('/', [\Pterodactyl\Http\Controllers\Api\Admin\Zenith\ZenithSettingsController::class, 'index']);
     Route::post('/', [\Pterodactyl\Http\Controllers\Api\Admin\Zenith\ZenithSettingsController::class, 'update']);
     Route::post('/test', [\Pterodactyl\Http\Controllers\Api\Admin\Zenith\ZenithSettingsController::class, 'test'])->name('.test');
+    Route::get('/nodes/{node:id}/server-usage', \Pterodactyl\Http\Controllers\Api\Admin\Zenith\ServerUsageController::class)->name('.server-usage');
 });
 

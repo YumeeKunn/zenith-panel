@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Activity, BarChart3, Bell, CloudOff, Cpu, Gauge, HardDrive, MemoryStick, RefreshCw, Send, Server } from 'lucide-react';
+import { Activity, BarChart3, Bell, CloudOff, Cpu, Gauge, HardDrive, MemoryStick, RefreshCw, Send, Server, Layers } from 'lucide-react';
 import AdminContentBlock from '@/components/admin/AdminContentBlock';
 import Alert from '@/components/elements/alert/Alert';
 import Button from '@/components/elements/Button';
@@ -7,7 +7,7 @@ import Spinner from '@/components/elements/Spinner';
 import { getZenithSettings, saveZenithSettings, testZenithChannels, ZenithAlertConfig, ZenithSettings } from '@/api/admin/zenith/queries';
 import { httpErrorToHuman } from '@/api/http';
 
-type Tab = 'alerts' | 'graphs';
+type Tab = 'alerts' | 'graphs' | 'usage';
 type ChannelChoice = 'off' | 'discord' | 'generic' | 'both';
 
 const CHANNEL_LABELS: Record<ChannelChoice, string> = {
@@ -36,8 +36,9 @@ export default function ZenithAdminContainer() {
             <div className={'mb-6 flex gap-2 border-b border-neutral-700'}>
                 <TabButton active={tab === 'alerts'} onClick={() => setTab('alerts')} icon={<Bell size={14} />} label={'Alert Settings'} />
                 <TabButton active={tab === 'graphs'} onClick={() => setTab('graphs')} icon={<BarChart3 size={14} />} label={'Graph Monitor'} />
+                <TabButton active={tab === 'usage'} onClick={() => setTab('usage')} icon={<Layers size={14} />} label={'Server Usage'} />
             </div>
-            {tab === 'alerts' ? <AlertSettingsTab /> : <GraphMonitorTab />}
+            {tab === 'alerts' ? <AlertSettingsTab /> : tab === 'graphs' ? <GraphMonitorTab /> : <ServerUsageTab />}
         </AdminContentBlock>
     );
 }
@@ -563,6 +564,172 @@ function ServerMetricsGraph({ points }: { points: ServerMetricPoint[] }) {
                 <span><span className={'inline-block h-0.5 w-4 bg-violet-500'} /> CPU %</span>
                 <span><span className={'inline-block h-0.5 w-4 bg-cyan-500'} /> RAM MB</span>
             </div>
+        </div>
+    );
+}
+
+/* ============================= SERVER USAGE TAB ============================= */
+
+interface ServerUsage {
+    id: number;
+    name: string;
+    uuid_short: string;
+    state: string;
+    suspended: boolean;
+    cpu_percent: number;
+    cpu_limit: number;
+    memory_used_mb: number;
+    memory_limit_mb: number;
+    memory_percent: number;
+    disk_used_mb: number;
+    disk_limit_mb: number;
+    disk_percent: number;
+}
+
+function ServerUsageTab() {
+    const [nodes, setNodes] = useState<NodeInfo[]>([]);
+    const [selectedNode, setSelectedNode] = useState<number | null>(null);
+    const [servers, setServers] = useState<ServerUsage[]>([]);
+    const [error, setError] = useState<string | null>(null);
+    const [loading, setLoading] = useState(true);
+    const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+    const loadUsage = useCallback(async (nodeId: number) => {
+        try {
+            const r = await fetch(`/api/admin/zenith/nodes/${nodeId}/server-usage`, { headers: { Accept: 'application/json' } });
+            const d = await r.json();
+            setServers(d.data || []);
+            setError(d.meta?.error || null);
+        } catch (e) {
+            setError('fetch failed');
+        }
+        setLoading(false);
+    }, []);
+
+    useEffect(() => {
+        fetch('/api/admin/nodes', { headers: { Accept: 'application/json' } })
+            .then((r) => r.json())
+            .then((d) => {
+                const list: NodeInfo[] = (d.data || []).map((n: any) => ({ id: n.attributes.id, name: n.attributes.name, fqdn: n.attributes.fqdn }));
+                setNodes(list);
+                if (list.length > 0) setSelectedNode(list[0].id);
+            });
+        return () => {};
+    }, []);
+
+    // 3s polling — ONLY while this tab is open (cleanup on unmount = zero cost)
+    useEffect(() => {
+        if (selectedNode === null) return;
+        const tick = () => loadUsage(selectedNode);
+        tick();
+        timerRef.current = setInterval(tick, 3000);
+        return () => {
+            if (timerRef.current) clearInterval(timerRef.current);
+        };
+    }, [selectedNode, loadUsage]);
+
+    const stateBadge = (s: string) => {
+        const map: Record<string, string> = {
+            running: 'bg-green-500/10 text-green-400 border-green-500/30',
+            starting: 'bg-yellow-500/10 text-yellow-400 border-yellow-500/30',
+            offline: 'bg-neutral-500/10 text-neutral-400 border-neutral-500/30',
+            stopping: 'bg-orange-500/10 text-orange-400 border-orange-500/30',
+        };
+        return map[s] || 'bg-neutral-500/10 text-neutral-400 border-neutral-500/30';
+    };
+
+    return (
+        <div>
+            <p className={'mb-4 flex items-center gap-2 text-sm text-neutral-400'}>
+                <Layers size={14} /> Live per-server resource usage on the selected node. Collects only while this tab is open.
+            </p>
+
+            {/* Node tabs */}
+            <div className={'mb-4 flex flex-wrap items-center gap-2'}>
+                {nodes.map((n) => (
+                    <button
+                        key={n.id}
+                        onClick={() => setSelectedNode(n.id)}
+                        className={`flex items-center gap-2 rounded-lg border px-4 py-2 text-sm transition-colors ${
+                            selectedNode === n.id
+                                ? 'border-violet-500 bg-violet-500/10 text-violet-300'
+                                : 'border-neutral-700 bg-neutral-800/50 text-neutral-300 hover:border-violet-500/50'
+                        }`}
+                    >
+                        <Server size={14} /> {n.name}
+                        <span className={'text-xs text-neutral-500'}>{n.fqdn}</span>
+                    </button>
+                ))}
+            </div>
+
+            {error && <Alert type={'danger'} className={'mb-4'}>{error}</Alert>}
+
+            {loading && servers.length === 0 ? (
+                <Spinner size={'large'} centered />
+            ) : servers.length === 0 ? (
+                <div className={'rounded-lg border border-neutral-700 bg-neutral-800/50 py-16 text-center text-sm text-neutral-500'}>
+                    <Layers size={20} className={'mx-auto mb-2 text-neutral-600'} />
+                    No servers on this node.
+                </div>
+            ) : (
+                <div className={'grid gap-4'}>
+                    {servers.map((srv) => (
+                        <div key={srv.id} className={'rounded-lg border border-neutral-700 bg-neutral-800/50 p-5'}>
+                            <div className={'mb-3 flex items-center justify-between'}>
+                                <div>
+                                    <span className={'font-semibold text-neutral-100'}>{srv.name}</span>
+                                    <span className={'ml-2 text-xs text-neutral-500'}>#{srv.uuid_short}</span>
+                                </div>
+                                <span className={`rounded border px-2 py-0.5 text-xs font-medium ${stateBadge(srv.state)}`}>
+                                    {srv.state.toUpperCase()}{srv.suspended ? ' (SUSPENDED)' : ''}
+                                </span>
+                            </div>
+                            <div className={'grid grid-cols-1 gap-4 md:grid-cols-3'}>
+                                {/* CPU */}
+                                <div>
+                                    <div className={'mb-1 flex items-center gap-1 text-xs text-neutral-400'}>
+                                        <Cpu size={11} /> CPU {srv.cpu_percent}% / limit {srv.cpu_limit}%
+                                    </div>
+                                    <div className={'h-2 w-full rounded-full bg-neutral-900'}>
+                                        <div
+                                            className={`h-2 rounded-full transition-all ${srv.cpu_percent > 85 ? 'bg-red-500' : 'bg-violet-500'}`}
+                                            style={{ width: Math.min(srv.cpu_percent, 100) + '%' }}
+                                        />
+                                    </div>
+                                </div>
+                                {/* RAM */}
+                                <div>
+                                    <div className={'mb-1 flex items-center gap-1 text-xs text-neutral-400'}>
+                                        <MemoryStick size={11} /> RAM {srv.memory_used_mb}MB / {srv.memory_limit_mb}MB ({srv.memory_percent}%)
+                                    </div>
+                                    <div className={'h-2 w-full rounded-full bg-neutral-900'}>
+                                        <div
+                                            className={`h-2 rounded-full transition-all ${srv.memory_percent > 90 ? 'bg-red-500' : 'bg-cyan-500'}`}
+                                            style={{ width: Math.min(srv.memory_percent, 100) + '%' }}
+                                        />
+                                    </div>
+                                </div>
+                                {/* Disk */}
+                                <div>
+                                    <div className={'mb-1 flex items-center gap-1 text-xs text-neutral-400'}>
+                                        <HardDrive size={11} /> Disk {srv.disk_used_mb}MB / {srv.disk_limit_mb}MB ({srv.disk_percent}%)
+                                    </div>
+                                    <div className={'h-2 w-full rounded-full bg-neutral-900'}>
+                                        <div
+                                            className={`h-2 rounded-full transition-all ${srv.disk_percent > 90 ? 'bg-red-500' : 'bg-green-500'}`}
+                                            style={{ width: Math.min(srv.disk_percent, 100) + '%' }}
+                                        />
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            )}
+
+            <p className={'mt-4 flex items-center gap-1 text-xs text-neutral-500'}>
+                <RefreshCw size={10} className={'inline'} /> Live — refreshes every 3s while this tab is open. Zero cost when closed.
+            </p>
         </div>
     );
 }
