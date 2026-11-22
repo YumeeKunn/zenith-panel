@@ -816,6 +816,12 @@ const panelChildren = [
     }),
     createRoute({
         getParentRoute: () => panelRoute,
+        path: 'zenith',
+        staticData: { nav: { label: 'Zenith Control', icon: 'shield-check' } },
+        component: componentRoute(() => import('@/components/admin/zenith/ZenithAdminContainer')),
+    }),
+    createRoute({
+        getParentRoute: () => panelRoute,
         path: 'settings',
         staticData: { nav: { label: 'Settings', icon: 'settings' } },
         loader: async ({ context }) => {

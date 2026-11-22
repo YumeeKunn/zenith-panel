@@ -486,3 +486,18 @@ Route::prefix('/api-keys')->name('api.admin.api-keys')->group(function (): void 
 Route::prefix('/version')->name('api.admin.version')->group(function (): void {
     Route::get('/', VersionController::class);
 });
+
+/*
+|--------------------------------------------------------------------------
+| Zenith Control Routes
+|--------------------------------------------------------------------------
+|
+| Endpoint: /api/admin/zenith
+|
+*/
+Route::prefix('/zenith')->name('api.admin.zenith')->group(function (): void {
+    Route::get('/', [\Pterodactyl\Http\Controllers\Api\Admin\Zenith\ZenithSettingsController::class, 'index']);
+    Route::post('/', [\Pterodactyl\Http\Controllers\Api\Admin\Zenith\ZenithSettingsController::class, 'update']);
+    Route::post('/test', [\Pterodactyl\Http\Controllers\Api\Admin\Zenith\ZenithSettingsController::class, 'test'])->name('.test');
+});
+
