@@ -17,14 +17,6 @@
         "prefix": "zn",
         "screens": [
             {
-                "id": "main",
-                "area": "server",
-                "path": "zenith-monitor",
-                "nav": {
-                    "label": "Zenith Monitor"
-                }
-            },
-            {
                 "id": "control",
                 "area": "admin",
                 "path": "zenith-control",

@@ -10,28 +10,20 @@ const CHANNELS = [
 ];
 
 interface AlertConfig {
-    label: string;
-    hint: string;
-    has_threshold: boolean;
-    threshold_default: number | null;
-    channel: string;
-    threshold: number | null;
+    label: string; hint: string; has_threshold: boolean;
+    threshold_default: number | null; channel: string; threshold: number | null;
 }
-
 interface Config {
-    discord_webhook: string;
-    generic_webhook: string;
-    cooldown: number;
+    discord_webhook: string; generic_webhook: string; cooldown: number;
     modules: { watchdog: boolean; graphs: boolean; usage: boolean };
     alerts: Record<string, AlertConfig>;
 }
-
-interface NodePoint { collected_at: string; cpu_percent: number; memory_percent: number; disk_percent: number; }
+interface NodePoint { collected_at: string; cpu_percent: number; memory_percent: number; disk_percent: number; allocated_memory_percent: number | null; allocated_disk_percent: number | null; }
 interface UsageServer { id: number; name: string; state: string; cpu_percent: number; memory_percent: number; disk_percent: number; memory_used_mb: number; memory_limit_mb: number; disk_used_mb: number; disk_limit_mb: number; suspended: boolean; }
 interface NodeInfo { id: number; name: string; fqdn: string; }
 
-/* ── Line chart (canvas) ── */
-function LineChart({ series, max, height = 200 }: { series: { data: number[]; color: string; label: string }[]; max: number; height?: number }) {
+/* ── Improved chart: grid + fill gradient + avg line + dots ── */
+function LineChart({ series, max, height = 220, unit = '%' }: { series: { data: (number | null)[]; color: string; label: string }[]; max: number; height?: number; unit?: string }) {
     const ref = useRef<HTMLCanvasElement | null>(null);
     useEffect(() => {
         const canvas = ref.current;
@@ -42,47 +34,106 @@ function LineChart({ series, max, height = 200 }: { series: { data: number[]; co
         const w = canvas.clientWidth;
         canvas.width = w * dpr;
         canvas.height = height * dpr;
-        ctx.scale(dpr, dpr);
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
         ctx.clearRect(0, 0, w, height);
-        ctx.strokeStyle = 'rgba(139,147,167,0.25)';
-        ctx.lineWidth = 1;
-        for (let i = 0; i <= 4; i++) {
-            const y = 10 + (i * (height - 30)) / 4;
-            ctx.beginPath();
-            ctx.moveTo(45, y);
-            ctx.lineTo(w - 10, y);
-            ctx.stroke();
-            ctx.fillStyle = '#8b93a7';
-            ctx.font = '10px sans-serif';
-            ctx.fillText(`${Math.round(max - (i * max) / 4)}`, 5, y + 3);
+
+        const padL = 44, padR = 12, padT = 18, padB = 24;
+        const gw = w - padL - padR, gh = height - padT - padB;
+
+        // horizontal grid + labels
+        ctx.font = '10px ui-monospace,monospace';
+        for (let i = 0; i <= 5; i++) {
+            const y = padT + (i * gh) / 5;
+            ctx.strokeStyle = i === 5 ? 'rgba(139,147,167,0.4)' : 'rgba(139,147,167,0.15)';
+            ctx.beginPath(); ctx.moveTo(padL, y); ctx.lineTo(w - padR, y); ctx.stroke();
+            ctx.fillStyle = '#8b95a7';
+            ctx.fillText(`${Math.round(max - (i * max) / 5)}${unit}`, 4, y + 3);
         }
+
         const maxLen = Math.max(...series.map((s) => s.data.length), 1);
-        if (maxLen <= 1) return;
+        if (maxLen < 2) {
+            ctx.fillStyle = '#8b95a7';
+            ctx.fillText('collecting data...', padL + 10, padT + gh / 2);
+            return;
+        }
+        const px = (i: number) => padL + (i / (maxLen - 1)) * gw;
+        const py = (v: number) => padT + (1 - Math.min(Math.max(v, 0), max) / max) * gh;
+
         for (const s of series) {
-            ctx.strokeStyle = s.color;
-            ctx.lineWidth = 2;
+            // area fill gradient
+            const grad = ctx.createLinearGradient(0, padT, 0, padT + gh);
+            grad.addColorStop(0, s.color + '44');
+            grad.addColorStop(1, s.color + '05');
             ctx.beginPath();
+            let started = false;
             s.data.forEach((v, i) => {
-                const x = 45 + (i / (maxLen - 1)) * (w - 55);
-                const y = 10 + (1 - Math.min(v, max) / max) * (height - 30);
-                if (i === 0) ctx.moveTo(x, y);
-                else ctx.lineTo(x, y);
+                if (v == null) return;
+                const X = px(i), Y = py(v);
+                if (!started) { ctx.moveTo(X, py(0)); ctx.lineTo(X, Y); started = true; }
+                else ctx.lineTo(X, Y);
             });
-            ctx.stroke();
+            if (started) {
+                const lastIdx = s.data.reduce((acc, v, i) => (v != null ? i : acc), 0);
+                ctx.lineTo(px(lastIdx), py(0));
+                ctx.closePath();
+                ctx.fillStyle = grad;
+                ctx.fill();
+            }
+            // line
+            ctx.beginPath();
+            started = false;
+            s.data.forEach((v, i) => {
+                if (v == null) return;
+                const X = px(i), Y = py(v);
+                if (!started) { ctx.moveTo(X, Y); started = true; } else ctx.lineTo(X, Y);
+            });
+            ctx.strokeStyle = s.color; ctx.lineWidth = 2;
+            ctx.shadowColor = s.color + '66'; ctx.shadowBlur = 4;
+            ctx.stroke(); ctx.shadowBlur = 0;
+            // last dot
+            const lastIdx = s.data.reduce((acc, v, i) => (v != null ? i : acc), 0);
+            const lastV = s.data[lastIdx];
+            if (lastV != null) {
+                ctx.beginPath(); ctx.arc(px(lastIdx), py(lastV), 3.5, 0, Math.PI * 2);
+                ctx.fillStyle = s.color; ctx.fill();
+                ctx.fillStyle = '#e8eaf0'; ctx.font = 'bold 11px ui-monospace,monospace';
+                ctx.fillText(`${Math.round(lastV)}${unit}`, Math.min(px(lastIdx) + 6, w - 40), py(lastV) - 6);
+            }
+            // avg dashed line
+            const vals = s.data.filter((v) => v != null) as number[];
+            if (vals.length > 4) {
+                const avg = vals.reduce((a, b) => a + b, 0) / vals.length;
+                ctx.setLineDash([4, 4]);
+                ctx.strokeStyle = s.color + '77'; ctx.lineWidth = 1;
+                ctx.beginPath(); ctx.moveTo(padL, py(avg)); ctx.lineTo(w - padR, py(avg)); ctx.stroke();
+                ctx.setLineDash([]);
+            }
+            // legend
+            const lx = padL + 8 + (series.indexOf(s) * 130);
+            ctx.fillStyle = s.color; ctx.fillRect(lx, 4, 10, 3);
+            ctx.fillStyle = '#8b95a7'; ctx.font = '10px sans-serif';
+            ctx.fillText(`${s.label} avg ${Math.round(vals.reduce((a, b) => a + b, 0) / (vals.length || 1))}${unit}`, lx + 14, 8);
         }
-        let lx = 45;
-        for (const s of series) {
-            ctx.fillStyle = s.color;
-            ctx.fillRect(lx, 4, 10, 3);
-            ctx.fillStyle = '#8b93a7';
-            ctx.fillText(s.label, lx + 14, 9);
-            lx += 14 + ctx.measureText(s.label).width + 16;
-        }
-    }, [series, max, height]);
+    }, [series, max, height, unit]);
     return <canvas ref={ref} style={{ width: '100%', height }} />;
 }
 
-/* ── Graph Monitor tab ── */
+/* ── Resource bar: green→amber→red thresholds ── */
+function ResBar({ pct, label }: { pct: number; label: string }) {
+    const color = pct < 60 ? '#34d399' : pct < 85 ? '#fbbf24' : '#f87171';
+    return (
+        <div className={'zn:mb-2'}>
+            <div className={'zn:mb-1 zn:flex zn:justify-between zn:text-xs zn:text-muted-foreground'}>
+                <span>{label}</span><span>{pct}%</span>
+            </div>
+            <div className={'zn:h-2.5 zn:w-full zn:rounded-full zn:bg-muted zn:overflow-hidden'}>
+                <div className={'zn:h-full zn:rounded-full zn:transition-all zn:duration-500'} style={{ width: `${Math.min(pct, 100)}%`, background: `linear-gradient(90deg, ${color}99, ${color})` }} />
+            </div>
+        </div>
+    );
+}
+
+/* ── Graph tab (improved) ── */
 function GraphTab() {
     const [nodes, setNodes] = useState<NodeInfo[]>([]);
     const [selected, setSelected] = useState<number | null>(null);
@@ -104,9 +155,7 @@ function GraphTab() {
             try {
                 const { data } = await http.get(`/api/admin/extensions/zenith-monitor/nodes/${selected}/graphs?hours=${hours}`);
                 setPoints(data?.data ?? []);
-            } catch (e) {
-                console.error('[zenith] graphs fetch failed', e);
-            }
+            } catch { /* keep last data */ }
         };
         tick();
         timer.current = setInterval(tick, 3000);
@@ -115,16 +164,11 @@ function GraphTab() {
 
     return (
         <div>
-            <p className={'zn:mb-4 zn:text-sm zn:text-muted-foreground'}>Per-node CPU / RAM / Storage — auto-updates every 3s while this tab is open (on-demand collection).</p>
+            <p className={'zn:mb-4 zn:text-sm zn:text-muted-foreground'}>Per-node CPU / RAM / Storage — live every 3s while this tab is open.</p>
             <div className={'zn:mb-4 zn:flex zn:flex-wrap zn:gap-2'}>
                 {nodes.map((n) => (
-                    <button
-                        key={n.id}
-                        onClick={() => setSelected(n.id)}
-                        className={`zn:rounded-lg zn:border zn:px-4 zn:py-2 zn:text-sm ${
-                            selected === n.id ? 'zn:border-violet-500 zn:bg-violet-500/10 zn:text-violet-300' : 'zn:border-border zn:text-foreground'
-                        }`}
-                    >
+                    <button key={n.id} onClick={() => setSelected(n.id)}
+                        className={`zn:rounded-lg zn:border zn:px-4 zn:py-2 zn:text-sm ${selected === n.id ? 'zn:border-violet-500 zn:bg-violet-500/10 zn:text-violet-300' : 'zn:border-border'}`}>
                         {n.name} <span className={'zn:text-xs zn:text-muted-foreground'}>{n.fqdn}</span>
                     </button>
                 ))}
@@ -132,35 +176,26 @@ function GraphTab() {
             <div className={'zn:mb-4 zn:flex zn:items-center zn:gap-3'}>
                 <label className={'zn:text-sm'}>Range:</label>
                 <select className={'zn:rounded zn:border zn:border-border zn:bg-transparent zn:px-3 zn:py-1.5'} value={hours} onChange={(e) => setHours(parseInt(e.target.value))}>
-                    <option value={1}>Last hour</option>
-                    <option value={6}>Last 6 hours</option>
-                    <option value={24}>Last 24 hours</option>
-                    <option value={48}>Last 48 hours</option>
+                    <option value={1}>Last hour</option><option value={6}>Last 6 hours</option>
+                    <option value={24}>Last 24 hours</option><option value={48}>Last 48 hours</option>
                 </select>
             </div>
-            {points.length === 0 ? (
-                <Spinner size={'large'} centered />
-            ) : (
-                <div className={'zn:grid zn:gap-4'}>
-                    <div className={'zn:rounded-lg zn:border zn:border-border zn:p-5'}>
-                        <h2 className={'zn:mb-3 zn:text-sm zn:font-semibold zn:uppercase zn:text-muted-foreground'}>CPU Usage %</h2>
-                        <LineChart series={[{ data: points.map((p) => p.cpu_percent), color: '#8b5cf6', label: 'CPU %' }]} max={100} />
-                    </div>
-                    <div className={'zn:rounded-lg zn:border zn:border-border zn:p-5'}>
-                        <h2 className={'zn:mb-3 zn:text-sm zn:font-semibold zn:uppercase zn:text-muted-foreground'}>RAM Usage %</h2>
-                        <LineChart series={[{ data: points.map((p) => p.memory_percent), color: '#22d3ee', label: 'RAM %' }]} max={100} />
-                    </div>
-                    <div className={'zn:rounded-lg zn:border zn:border-border zn:p-5'}>
-                        <h2 className={'zn:mb-3 zn:text-sm zn:font-semibold zn:uppercase zn:text-muted-foreground'}>Storage Usage %</h2>
-                        <LineChart series={[{ data: points.map((p) => p.disk_percent), color: '#34d399', label: 'Disk %' }]} max={100} />
-                    </div>
+            <div className={'zn:space-y-4'}>
+                <div className={'zn:rounded-lg zn:border zn:border-border zn:p-5'}>
+                    <LineChart series={[{ data: points.map((p) => p.cpu_percent), color: '#8b5cf6', label: 'CPU' }]} max={100} />
                 </div>
-            )}
+                <div className={'zn:rounded-lg zn:border zn:border-border zn:p-5'}>
+                    <LineChart series={[{ data: points.map((p) => p.memory_percent), color: '#22d3ee', label: 'RAM' }]} max={100} />
+                </div>
+                <div className={'zn:rounded-lg zn:border zn:border-border zn:p-5'}>
+                    <LineChart series={[{ data: points.map((p) => p.disk_percent), color: '#34d399', label: 'Disk' }]} max={100} />
+                </div>
+            </div>
         </div>
     );
 }
 
-/* ── Server Usage tab ── */
+/* ── Server Usage tab (green bars) ── */
 function UsageTab() {
     const [nodes, setNodes] = useState<NodeInfo[]>([]);
     const [selected, setSelected] = useState<number | null>(null);
@@ -178,32 +213,23 @@ function UsageTab() {
     useEffect(() => {
         if (selected === null) return;
         const tick = async () => {
-            const { data } = await http.get(`/api/admin/extensions/zenith-monitor/nodes/${selected}/server-usage`);
-            setServers(data.data || []);
+            try {
+                const { data } = await http.get(`/api/admin/extensions/zenith-monitor/nodes/${selected}/server-usage`);
+                setServers(data?.data ?? []);
+            } catch { /* keep last */ }
         };
         tick();
         timer.current = setInterval(tick, 3000);
         return () => { if (timer.current) clearInterval(timer.current); };
     }, [selected]);
 
-    const bar = (pct: number, color: string) => (
-        <div className={'zn:h-2 zn:w-full zn:rounded zn:bg-muted'}>
-            <div className={`zn:h-2 zn:rounded ${color}`} style={{ width: `${Math.min(pct, 100)}%` }} />
-        </div>
-    );
-
     return (
         <div>
-            <p className={'zn:mb-4 zn:text-sm zn:text-muted-foreground'}>Live per-server usage on the selected node — refreshes every 3s.</p>
+            <p className={'zn:mb-4 zn:text-sm zn:text-muted-foreground'}>Live per-server resources on the selected node — bars turn amber/red near limits.</p>
             <div className={'zn:mb-4 zn:flex zn:flex-wrap zn:gap-2'}>
                 {nodes.map((n) => (
-                    <button
-                        key={n.id}
-                        onClick={() => setSelected(n.id)}
-                        className={`zn:rounded-lg zn:border zn:px-4 zn:py-2 zn:text-sm ${
-                            selected === n.id ? 'zn:border-violet-500 zn:bg-violet-500/10 zn:text-violet-300' : 'zn:border-border zn:text-foreground'
-                        }`}
-                    >
+                    <button key={n.id} onClick={() => setSelected(n.id)}
+                        className={`zn:rounded-lg zn:border zn:px-4 zn:py-2 zn:text-sm ${selected === n.id ? 'zn:border-violet-500 zn:bg-violet-500/10 zn:text-violet-300' : 'zn:border-border'}`}>
                         {n.name}
                     </button>
                 ))}
@@ -211,26 +237,15 @@ function UsageTab() {
             <div className={'zn:grid zn:gap-3 md:zn:grid-cols-2'}>
                 {servers.map((s) => (
                     <div key={s.id} className={'zn:rounded-lg zn:border zn:border-border zn:p-4'}>
-                        <div className={'zn:mb-2 zn:flex zn:items-center zn:justify-between'}>
+                        <div className={'zn:mb-3 zn:flex zn:items-center zn:justify-between'}>
                             <span className={'zn:font-medium'}>{s.name}</span>
                             <span className={`zn:rounded zn:px-2 zn:py-0.5 zn:text-xs ${s.suspended ? 'zn:bg-red-500/20 zn:text-red-400' : s.state === 'running' ? 'zn:bg-green-500/20 zn:text-green-400' : 'zn:bg-muted zn:text-muted-foreground'}`}>
                                 {s.suspended ? 'suspended' : s.state}
                             </span>
                         </div>
-                        <div className={'zn:space-y-2 zn:text-xs zn:text-muted-foreground'}>
-                            <div>
-                                <div className={'zn:mb-1 zn:flex zn:justify-between'}><span>CPU</span><span>{s.cpu_percent}% / {s.cpu_limit}%</span></div>
-                                {bar(s.cpu_percent, 'zn:bg-violet-500')}
-                            </div>
-                            <div>
-                                <div className={'zn:mb-1 zn:flex zn:justify-between'}><span>RAM</span><span>{s.memory_used_mb}MB / {s.memory_limit_mb}MB</span></div>
-                                {bar(s.memory_percent, 'zn:bg-cyan-500')}
-                            </div>
-                            <div>
-                                <div className={'zn:mb-1 zn:flex zn:justify-between'}><span>Disk</span><span>{s.disk_used_mb}MB / {s.disk_limit_mb}MB</span></div>
-                                {bar(s.disk_percent, 'zn:bg-emerald-500')}
-                            </div>
-                        </div>
+                        <ResBar pct={s.cpu_percent} label={`CPU (${s.cpu_percent}% of ${s.cpu_limit}%)`} />
+                        <ResBar pct={s.memory_percent} label={`RAM (${s.memory_used_mb} / ${s.memory_limit_mb} MB)`} />
+                        <ResBar pct={s.disk_percent} label={`Disk (${s.disk_used_mb} / ${s.disk_limit_mb} MB)`} />
                     </div>
                 ))}
             </div>
@@ -238,13 +253,12 @@ function UsageTab() {
     );
 }
 
-/* ── Watchdog (alert settings) tab ── */
-function WatchdogTab({ settings, setSettings, setMessage, setSaving, setTesting, setTestResults }: any) {
+/* ── Watchdog tab ── */
+function WatchdogTab({ settings, setSettings, setMessage, setTestResults }: any) {
     const updateAlert = (type: string, patch: Partial<AlertConfig>) => {
         setSettings({ ...settings, alerts: { ...settings.alerts, [type]: { ...settings.alerts[type], ...patch } } });
     };
     const save = async () => {
-        setSaving(true);
         try {
             const alerts: Record<string, { channel: string; threshold?: number | null }> = {};
             for (const [type, cfg] of Object.entries(settings.alerts)) {
@@ -260,19 +274,14 @@ function WatchdogTab({ settings, setSettings, setMessage, setSaving, setTesting,
             setMessage({ type: 'success', text: 'Settings saved — applied from the next watchdog cycle.' });
         } catch (e) {
             setMessage({ type: 'danger', text: httpErrorToHuman(e) });
-        } finally {
-            setSaving(false);
         }
     };
     const test = async () => {
-        setTesting(true);
         try {
             const { data } = await http.post('/api/admin/extensions/zenith-monitor/test');
             setTestResults(data.results || {});
         } catch (e) {
             setMessage({ type: 'danger', text: httpErrorToHuman(e) });
-        } finally {
-            setTesting(false);
         }
     };
 
@@ -283,27 +292,24 @@ function WatchdogTab({ settings, setSettings, setMessage, setSaving, setTesting,
                 <h2 className={'zn:mb-4 zn:text-sm zn:font-semibold zn:uppercase zn:tracking-wide zn:text-muted-foreground'}>Notification Channels</h2>
                 <div className={'zn:grid zn:gap-4 md:zn:grid-cols-2'}>
                     <div>
-                        <label className={'zn:mb-1 zn:block zn:text-sm'}>Discord Webhook</label>
+                        <label className={'zn:mb-1.5 zn:block zn:text-sm zn:font-medium'}>Discord Webhook</label>
                         <Input value={settings.discord_webhook} onChange={(e: any) => setSettings({ ...settings, discord_webhook: e.target.value })} placeholder={'https://discord.com/api/webhooks/...'} />
                     </div>
                     <div>
-                        <label className={'zn:mb-1 zn:block zn:text-sm'}>Generic Webhook (ntfy / Slack / custom)</label>
+                        <label className={'zn:mb-1.5 zn:block zn:text-sm zn:font-medium'}>Generic Webhook (ntfy / Slack)</label>
                         <Input value={settings.generic_webhook} onChange={(e: any) => setSettings({ ...settings, generic_webhook: e.target.value })} placeholder={'https://ntfy.sh/your-topic'} />
                     </div>
                 </div>
                 <div className={'zn:mt-4'}>
-                    <label className={'zn:mb-1 zn:block zn:text-sm'}>Alert Repeat Interval (seconds)</label>
+                    <label className={'zn:mb-1.5 zn:block zn:text-sm zn:font-medium'}>Alert Repeat Interval (seconds)</label>
                     <Input type={'number'} value={settings.cooldown} onChange={(e: any) => setSettings({ ...settings, cooldown: parseInt(e.target.value) || 900 })} />
                 </div>
             </div>
-
             <div className={'zn:mb-6 zn:rounded-lg zn:border zn:border-border'}>
                 <table className={'zn:w-full zn:text-sm'}>
                     <thead>
                         <tr className={'zn:border-b zn:border-border zn:text-left zn:text-xs zn:uppercase zn:text-muted-foreground'}>
-                            <th className={'zn:px-4 zn:py-3'}>Alert</th>
-                            <th className={'zn:px-4 zn:py-3'}>Send To</th>
-                            <th className={'zn:px-4 zn:py-3'}>Threshold (%)</th>
+                            <th className={'zn:px-4 zn:py-3'}>Alert</th><th className={'zn:px-4 zn:py-3'}>Send To</th><th className={'zn:px-4 zn:py-3'}>Threshold (%)</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -317,27 +323,21 @@ function WatchdogTab({ settings, setSettings, setMessage, setSaving, setTesting,
                                     <Select value={cfg.channel} onChange={(v: any) => updateAlert(type, { channel: String(v) })} options={CHANNELS} />
                                 </td>
                                 <td className={'zn:px-4 zn:py-3'}>
-                                    {cfg.has_threshold ? (
-                                        <Input type={'number'} value={cfg.threshold ?? ''} onChange={(e: any) => updateAlert(type, { threshold: parseInt(e.target.value) })} />
-                                    ) : (
-                                        <span className={'zn:text-muted-foreground'}>—</span>
-                                    )}
+                                    {cfg.has_threshold ? <Input type={'number'} value={cfg.threshold ?? ''} onChange={(e: any) => updateAlert(type, { threshold: parseInt(e.target.value) })} /> : <span className={'zn:text-muted-foreground'}>—</span>}
                                 </td>
                             </tr>
                         ))}
                     </tbody>
                 </table>
             </div>
-
             <div className={'zn:flex zn:items-center zn:gap-3'}>
                 <Button onClick={save}>Save Settings</Button>
-                <Button variant={"secondary"} onClick={test}>Send Test</Button>
+                <Button variant={'secondary'} onClick={test}>Send Test</Button>
             </div>
         </div>
     );
 }
 
-/* ── MAIN HUB ── */
 const TABS = [
     { id: 'watchdog', label: 'Watchdog', icon: '🛡' },
     { id: 'graphs', label: 'Graph Monitor', icon: '📊' },
@@ -346,9 +346,7 @@ const TABS = [
 
 export default function ZenithControlScreen() {
     const [settings, setSettings] = useState<Config | null>(null);
-    const [tab, setTab] = useState<string>('watchdog');
-    const [saving, setSaving] = useState(false);
-    const [testing, setTesting] = useState(false);
+    const [tab, setTab] = useState('watchdog');
     const [message, setMessage] = useState<{ type: string; text: string } | null>(null);
     const [testResults, setTestResults] = useState<Record<string, string> | null>(null);
     const [loadError, setLoadError] = useState<string | null>(null);
@@ -363,41 +361,23 @@ export default function ZenithControlScreen() {
             .catch((e) => setLoadError(httpErrorToHuman(e)));
     }, []);
 
-    if (loadError) {
-        return (
-            <PageContentBlock title={'Zenith Control'}>
-                <Alert type={'danger'}>{loadError}</Alert>
-            </PageContentBlock>
-        );
-    }
-    if (!settings) {
-        return <PageContentBlock title={'Zenith Control'}><Spinner size={'large'} centered /></PageContentBlock>;
-    }
+    if (loadError) return <PageContentBlock title={'Zenith Control'}><Alert type={'danger'}>{loadError}</Alert></PageContentBlock>;
+    if (!settings) return <PageContentBlock title={'Zenith Control'}><Spinner size={'large'} centered /></PageContentBlock>;
 
     const visibleTabs = TABS.filter((t) => (settings.modules as any)?.[t.id] !== false);
 
     return (
         <PageContentBlock title={'Zenith Control'}>
-            <h1 className={'zn:mb-1 zn:flex zn:items-center zn:gap-2 zn:text-2xl zn:font-bold'}>🛡 Zenith Control</h1>
+            <h1 className={'zn:mb-1 zn:text-2xl zn:font-bold'}>🛡 Zenith Control</h1>
             <p className={'zn:mb-4 zn:text-sm zn:text-muted-foreground'}>Watchdog protection, live resource graphs and server usage — the Zenith suite.</p>
-
-            {/* tabs */}
             <div className={'zn:mb-6 zn:flex zn:gap-1 zn:border-b zn:border-border'}>
                 {visibleTabs.map((t) => (
-                    <button
-                        key={t.id}
-                        onClick={() => setTab(t.id)}
-                        className={`zn:px-4 zn:py-2 zn:text-sm zn:transition ${
-                            tab === t.id
-                                ? 'zn:border-b-2 zn:border-violet-500 zn:font-medium zn:text-violet-300'
-                                : 'zn:text-muted-foreground hover:zn:text-foreground'
-                        }`}
-                    >
+                    <button key={t.id} onClick={() => setTab(t.id)}
+                        className={`zn:px-4 zn:py-2 zn:text-sm zn:transition ${tab === t.id ? 'zn:border-b-2 zn:border-violet-500 zn:font-medium zn:text-violet-300' : 'zn:text-muted-foreground hover:zn:text-foreground'}`}>
                         <span className={'zn:mr-1.5'}>{t.icon}</span>{t.label}
                     </button>
                 ))}
             </div>
-
             {message && <Alert type={message.type === 'success' ? 'success' : 'danger'}>{message.text}</Alert>}
             {testResults && Object.keys(testResults).length > 0 && (
                 <Alert type={'info'}>
@@ -409,18 +389,8 @@ export default function ZenithControlScreen() {
                     ))}
                 </Alert>
             )}
-
             <div className={'zn:mt-4'}>
-                {tab === 'watchdog' && (
-                    <WatchdogTab
-                        settings={settings}
-                        setSettings={setSettings}
-                        setMessage={setMessage}
-                        setSaving={setSaving}
-                        setTesting={setTesting}
-                        setTestResults={setTestResults}
-                    />
-                )}
+                {tab === 'watchdog' && <WatchdogTab settings={settings} setSettings={setSettings} setMessage={setMessage} setTestResults={setTestResults} />}
                 {tab === 'graphs' && <GraphTab />}
                 {tab === 'usage' && <UsageTab />}
             </div>
