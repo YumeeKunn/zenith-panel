@@ -25,9 +25,9 @@ class AlertsController
         }
 
         return new JsonResponse([
-            'discord_webhook' => Settings::get('discord_webhook') ?? '',
-            'generic_webhook' => Settings::get('generic_webhook') ?? '',
-            'cooldown' => Settings::get('cooldown') ?? 900,
+            'discord_webhook' => \ZenithMonitor\Services\Settings::get('discord_webhook') ?? '',
+            'generic_webhook' => \ZenithMonitor\Services\Settings::get('generic_webhook') ?? '',
+            'cooldown' => \ZenithMonitor\Services\Settings::get('cooldown') ?? 900,
             'alerts' => $alerts,
         ]);
     }
@@ -45,11 +45,11 @@ class AlertsController
 
         foreach (['discord_webhook', 'generic_webhook'] as $field) {
             if (array_key_exists($field, $data)) {
-                Settings::set($field, $data[$field] ?? '');
+                \ZenithMonitor\Services\Settings::set($field, $data[$field] ?? '');
             }
         }
         if (!empty($data['cooldown'])) {
-            Settings::set('cooldown', (string) $data['cooldown']);
+            \ZenithMonitor\Services\Settings::set('cooldown', (string) $data['cooldown']);
         }
         foreach ($data['alerts'] ?? [] as $type => $cfg) {
             if (array_key_exists($type, NotificationService::ALERT_TYPES)) {

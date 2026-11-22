@@ -3,7 +3,6 @@
 namespace ZenithMonitor\Services;
 
 use Illuminate\Support\Facades\Http;
-use ZenithMonitor\Settings;
 
 /**
  * Multi-channel notifications: Discord + Generic webhook.
