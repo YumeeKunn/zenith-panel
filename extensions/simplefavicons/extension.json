@@ -1,0 +1,32 @@
+{
+    "$schema": "./node_modules/@pterodactyl/sdk/manifest.schema.json",
+    "id": "simplefavicons",
+    "name": "Simple Favicons",
+    "version": "1.0.0",
+    "requires": {
+        "panel": "^2.0.0-dev",
+        "sdk": ">=2.0.0-beta.6 <3.0",
+        "php": "^8.3"
+    },
+    "description": "Custom favicons for your panel",
+    "author": "YumeeKunn",
+    "provider": "Simplefavicons\\SimplefaviconsProvider",
+    "ui": {
+        "entry": "dist/client.js",
+        "mode": "native",
+        "prefix": "sf",
+        "screens": [
+            {
+                "id": "admin",
+                "area": "admin",
+                "path": "simple-favicons",
+                "nav": {
+                    "label": "Simple Favicons"
+                }
+            }
+        ]
+    },
+    "autoload": {
+        "Simplefavicons\\": "src/"
+    }
+}

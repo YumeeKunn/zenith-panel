@@ -42,7 +42,7 @@ class StartupController
         // wings sync
         $node = $server->node;
         \Illuminate\Support\Facades\Http::withToken($node->getDecryptedKey())
-            ->withOptions(['verify' => !config('zenith.insecure_tls', false)])
+            ->withOptions(['verify' => false])
             ->timeout(10)
             ->post($node->scheme . '://' . $node->fqdn . ':' . $node->daemonListen . '/api/servers/' . $server->uuid . '/sync');
 

@@ -1,0 +1,11 @@
+{
+    "description": "Custom favicons for your panel",
+    "autoload": {
+        "psr-4": {
+            "Simplefavicons\\": "src/"
+        }
+    },
+    "config": {
+        "autoloader-suffix": "SimplefaviconsExtension"
+    }
+}

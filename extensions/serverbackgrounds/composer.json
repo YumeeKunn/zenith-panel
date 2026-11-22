@@ -1,0 +1,11 @@
+{
+    "description": "Custom backgrounds for server pages",
+    "autoload": {
+        "psr-4": {
+            "Serverbackgrounds\\": "src/"
+        }
+    },
+    "config": {
+        "autoloader-suffix": "ServerbackgroundsExtension"
+    }
+}

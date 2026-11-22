@@ -1,0 +1,32 @@
+{
+    "$schema": "./node_modules/@pterodactyl/sdk/manifest.schema.json",
+    "id": "serverbackgrounds",
+    "name": "Server Backgrounds",
+    "version": "1.0.0",
+    "requires": {
+        "panel": "^2.0.0-dev",
+        "sdk": ">=2.0.0-beta.6 <3.0",
+        "php": "^8.3"
+    },
+    "description": "Custom backgrounds for server pages",
+    "author": "YumeeKunn",
+    "provider": "Serverbackgrounds\\ServerbackgroundsProvider",
+    "ui": {
+        "entry": "dist/client.js",
+        "mode": "native",
+        "prefix": "sb",
+        "screens": [
+            {
+                "id": "admin",
+                "area": "admin",
+                "path": "server-backgrounds",
+                "nav": {
+                    "label": "Server Backgrounds"
+                }
+            }
+        ]
+    },
+    "autoload": {
+        "Serverbackgrounds\\": "src/"
+    }
+}
