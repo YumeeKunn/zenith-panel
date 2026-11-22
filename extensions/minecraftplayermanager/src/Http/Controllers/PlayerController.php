@@ -1,6 +1,7 @@
 <?php
 
 namespace Minecraftplayermanager\Http\Controllers;
+use Illuminate\Support\Facades\Http;
 
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -60,9 +61,9 @@ class PlayerController
             $node = $server->node;
             $base = $node->scheme . '://' . $node->fqdn . ':' . $node->daemonListen;
             $resp = Http::withToken($node->getDecryptedKey())
-                ->withOptions(['verify' => !config('zenith.insecure_tls', false)])
+                ->withOptions(['verify' => false])
                 ->timeout(10)
-                ->post($base . '/api/servers/' . $server->uuid . '/command', ['command' => $command]);
+                ->post($base . '/api/servers/' . $server->uuid . '/commands', ['commands' => [$command]]);
             return $resp->body() ?: 'sent';
         } catch (\Throwable $e) {
             return null;

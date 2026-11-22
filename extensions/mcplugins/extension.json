@@ -22,22 +22,6 @@
                 "path": "mcplugins",
                 "nav": {
                     "label": "MC Plugins"
-                },
-                "when": {
-                    "eggTags": {
-                        "any": [
-                            "minecraft",
-                            "paper",
-                            "purpur",
-                            "spigot",
-                            "vanilla",
-                            "bukkit",
-                            "folia",
-                            "forge",
-                            "fabric",
-                            "velocity"
-                        ]
-                    }
                 }
             }
         ]

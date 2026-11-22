@@ -31,9 +31,15 @@ class VersionController
         foreach (self::SOFTWARES as $software => $cfg) {
             if (!empty($cfg['api'])) {
                 try {
-                    $resp = Http::timeout(8)->get("https://api.papermc.io/v2/projects/{$cfg['api']}");
+                    // PaperMC Fill v3 API (v2 sunset) — versions = {mcVersion: [builds]}
+                    $resp = Http::timeout(8)->get("https://fill.papermc.io/v3/projects/{$cfg['api']}");
                     if ($resp->successful()) {
-                        $result[$software] = array_slice(array_reverse($resp->json('versions') ?? []), 0, 12);
+                        $groups = $resp->json('versions') ?? [];
+                        $flat = [];
+                        foreach ($groups as $mcv => $builds) {
+                            foreach ((array) $builds as $b) $flat[] = $b;
+                        }
+                        $result[$software] = array_slice($flat, 0, 12);
                         continue;
                     }
                 } catch (\Throwable $e) { /* fall through */ }
@@ -97,12 +103,12 @@ class VersionController
         $token = $node->getDecryptedKey();
 
         try {
-            Http::withToken($token)->withOptions(['verify' => !config('zenith.insecure_tls', false)])
+            Http::withToken($token)->withOptions(['verify' => false])
                 ->timeout(15)->post($base . '/api/servers/' . $server->uuid . '/sync');
 
             // reinstall trigger — new jar downloads on install
-            Http::withToken($token)->withOptions(['verify' => !config('zenith.insecure_tls', false)])
-                ->timeout(15)->post($base . '/api/servers/' . $server->uuid . '/install');
+            Http::withToken($token)->withOptions(['verify' => false])
+                ->timeout(15)->post($base . '/api/servers/' . $server->uuid . '/reinstall');
 
             return new JsonResponse(['success' => true, 'message' => "Switched to {$software} {$data['version']} — reinstall started. Console me progress dekho."]);
         } catch (\Throwable $e) {

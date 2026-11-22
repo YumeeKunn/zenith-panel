@@ -23,23 +23,9 @@
                 "nav": {
                     "label": "Version Changer"
                 },
-                "permission": [],
-                "when": {
-                    "eggTags": {
-                        "any": [
-                            "minecraft",
-                            "paper",
-                            "purpur",
-                            "spigot",
-                            "vanilla",
-                            "bukkit",
-                            "folia",
-                            "forge",
-                            "fabric",
-                            "velocity"
-                        ]
-                    }
-                }
+                "permission": [
+                    "file.update"
+                ]
             }
         ]
     },

@@ -71,11 +71,11 @@ class PluginController
         $base = $node->scheme . '://' . $node->fqdn . ':' . $node->daemonListen;
         try {
             Http::withToken($node->getDecryptedKey())
-                ->withOptions(['verify' => !config('zenith.insecure_tls', false)])
+                ->withOptions(['verify' => false])
                 ->timeout(30)
-                ->post($base . '/api/servers/' . $server->uuid . '/files/download', [
+                ->post($base . '/api/servers/' . $server->uuid . '/files/pull', [
                     'url' => $data['url'],
-                    'directory' => '/plugins',
+                    'root' => '/plugins',
                 ]);
             return new JsonResponse(['success' => true, 'message' => $data['filename'] . ' plugins/ me download ho gaya. Restart karo to load hoga.']);
         } catch (\Throwable $e) {

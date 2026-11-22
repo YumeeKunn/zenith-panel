@@ -73,7 +73,7 @@ class MetricsService
 
                 // Server container metrics via wings API
                 try {
-                    $resp = Http::withToken($token)->withOptions(['verify' => !config('zenith.insecure_tls', false)])
+                    $resp = Http::withToken($token)->withOptions(['verify' => false])
                         ->timeout(15)->get($base . '/api/servers');
                     if (!$resp->successful()) continue;
                     foreach ($resp->json() ?? [] as $ws) {

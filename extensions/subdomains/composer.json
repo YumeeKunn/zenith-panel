@@ -1,0 +1,11 @@
+{
+    "description": "Custom subdomains for game servers via Cloudflare",
+    "autoload": {
+        "psr-4": {
+            "Subdomains\\": "src/"
+        }
+    },
+    "config": {
+        "autoloader-suffix": "SubdomainsExtension"
+    }
+}

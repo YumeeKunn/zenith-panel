@@ -59,7 +59,7 @@ class GraphController
 
         try {
             $resp = Http::withToken($token)
-                ->withOptions(['verify' => !config('zenith.insecure_tls', false)])
+                ->withOptions(['verify' => false])
                 ->timeout(15)
                 ->get($base . '/api/servers');
             if (!$resp->successful()) {

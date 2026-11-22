@@ -73,7 +73,7 @@ class WatchdogService
 
         try {
             $resp = Http::withToken($token)
-                ->withOptions(['verify' => !config('zenith.insecure_tls', false)])
+                ->withOptions(['verify' => false])
                 ->timeout(15)
                 ->get($base . '/api/servers');
             if (! $resp->successful()) {
@@ -173,20 +173,25 @@ class WatchdogService
         // sustained CPU overload + disk guard
         if ($state === 'running') {
             $cpu = $util['cpu_absolute'] ?? 0;
-            $cpuThreshold = (float) $this->opt('server_cpu_warn');
-            $minutes = max(1, (int) $this->opt('cpu_minutes'));
+            $cpuThreshold = max(50.0, (float) $this->opt('server_cpu_warn'));
+            $minutes = max(2, (int) $this->opt('cpu_minutes'));
+            // stale marker guard: cpu_high_since older than 3x window = reset (avoids false suspend)
+            if (! empty($hist['cpu_high_since']) && time() - $hist['cpu_high_since'] > $minutes * 180) {
+                $hist['cpu_high_since'] = null;
+            }
             if ($cpu >= $cpuThreshold) {
                 $hist['cpu_low_streak'] = 0;
-                if (! $hist['cpu_high_since']) {
+                if (empty($hist['cpu_high_since'])) {
                     $hist['cpu_high_since'] = time();
                 } elseif (time() - $hist['cpu_high_since'] >= $minutes * 60) {
-                    $actions[] = "CPU-OVERLOAD {$server->name}: {$cpu}% sustained — SUSPENDING";
-                    $this->suspend($server, "sustained CPU {$cpu}%");
+                    $actions[] = "CPU-OVERLOAD {$server->name}: {$cpu}% sustained {$minutes}m — SUSPENDING";
+                    $this->suspend($server, "sustained CPU {$cpu}% for {$minutes}+ minutes");
                     $hist['cpu_high_since'] = null;
                 }
             } else {
-                $hist['cpu_low_streak'] = ($hist['cpu_low_streak'] ?? 0) + 1;
-                if ($hist['cpu_low_streak'] >= 2) $hist['cpu_high_since'] = null;
+                // CPU back to normal — reset immediately
+                $hist['cpu_high_since'] = null;
+                $hist['cpu_low_streak'] = 0;
             }
 
             $diskLimit = $server->disk * 1048576;
@@ -224,7 +229,7 @@ class WatchdogService
             $node = Node::find($server->node_id);
             if ($node) {
                 Http::withToken($node->getDecryptedKey())
-                    ->withOptions(['verify' => !config('zenith.insecure_tls', false)])
+                    ->withOptions(['verify' => false])
                     ->timeout(10)
                     ->post($node->scheme . '://' . $node->fqdn . ':' . $node->daemonListen . '/api/servers/' . $server->uuid . '/sync');
             }
@@ -254,7 +259,7 @@ class WatchdogService
         if ($pid <= 0) return;
         $rssMb = floatval(shell_exec("ps -o rss= -p $pid | awk '{print $1/1024}'"));
         $limit = (float) $this->opt('wings_rss_mb');
-        if ($rssMb > $limit) {
+        if ($limit > 0 && $rssMb > $limit) {
             $actions[] = "WINGS RAM BALLOONING: {$rssMb}MB > {$limit}MB";
             $this->notify->send('🐕 Wings RAM Ballooning',
                 "Wings daemon RAM {$rssMb}MB > limit {$limit}MB.\nFix: systemctl restart wings (servers safe).", 0xED4245, 'wings_health');
