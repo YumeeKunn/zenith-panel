@@ -30,6 +30,8 @@ class NodeMetricsController
                 'collected_at' => $m->collected_at->toIso8601String(),
                 'cpu_percent' => $m->cpu_percent,
                 'memory_percent' => $m->memory_percent,
+                'allocated_memory_percent' => $m->allocated_memory_percent,
+                'allocated_disk_percent' => $m->allocated_disk_percent,
                 'memory_used_gb' => round($m->memory_used_bytes / 1073741824, 2),
                 'memory_total_gb' => round($m->memory_total_bytes / 1073741824, 2),
                 'disk_percent' => $m->disk_percent,

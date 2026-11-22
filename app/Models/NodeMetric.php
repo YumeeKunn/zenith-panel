@@ -16,14 +16,16 @@ class NodeMetric extends Model
     protected $table = 'node_metrics';
 
     protected $fillable = [
-        'node_id', 'cpu_percent', 'memory_percent', 'memory_used_bytes',
-        'memory_total_bytes', 'disk_percent', 'disk_used_bytes', 'disk_total_bytes',
+        'node_id', 'cpu_percent', 'memory_percent', 'allocated_memory_percent', 'allocated_disk_percent',
+        'memory_used_bytes', 'memory_total_bytes', 'disk_percent', 'disk_used_bytes', 'disk_total_bytes',
         'collected_at',
     ];
 
     protected $casts = [
         'cpu_percent' => 'float',
         'memory_percent' => 'float',
+        'allocated_memory_percent' => 'float',
+        'allocated_disk_percent' => 'float',
         'memory_used_bytes' => 'integer',
         'memory_total_bytes' => 'integer',
         'disk_percent' => 'float',

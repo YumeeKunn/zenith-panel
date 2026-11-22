@@ -69,6 +69,7 @@
     <div class="card"><h2>Node CPU %</h2><canvas id="c-nodecpu"></canvas></div>
     <div class="card"><h2>Node RAM %</h2><canvas id="c-noderam"></canvas></div>
     <div class="card"><h2>Node Disk %</h2><canvas id="c-nodedisk"></canvas></div>
+    <div class="card"><h2>All Nodes — Allocated Load %</h2><canvas id="c-allnodes"></canvas></div>
     <div class="card"><h2>Server CPU % — {{ $server->name }}</h2><canvas id="c-svrcpu"></canvas></div>
     <div class="card"><h2>Server RAM MB — {{ $server->name }}</h2><canvas id="c-svrram"></canvas></div>
 </div>
@@ -94,6 +95,7 @@ let charts = {
     nodecpu: line('c-nodecpu', '#8b5cf6', 'CPU %'),
     noderam: line('c-noderam', '#22d3ee', 'RAM %'),
     nodedisk: line('c-nodedisk', '#34d399', 'Disk %'),
+    allnodes: line('c-allnodes', '#f87171', 'Allocated Load %'),
     svrcpu: line('c-svrcpu', '#8b5cf6', 'CPU %'),
     svrram: line('c-svrram', '#22d3ee', 'RAM MB'),
 };
@@ -123,6 +125,7 @@ async function loadAll() {
         setLine(charts.nodecpu, labels, nd.map(d => d.cpu_percent));
         setLine(charts.noderam, labels, nd.map(d => d.memory_percent));
         setLine(charts.nodedisk, labels, nd.map(d => d.disk_percent));
+        setLine(charts.allnodes, labels, nd.map(d => d.allocated_memory_percent ?? 0));
         const last = nd[nd.length - 1];
         document.getElementById('s-cpu').textContent = last ? last.cpu_percent + '%' : '—';
         document.getElementById('s-ram').textContent = last ? last.memory_percent + '%' : '—';
