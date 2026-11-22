@@ -29,7 +29,8 @@ class WatchdogCommand extends Command
         {--cpu-threshold=95 : Sustained CPU % considered abuse}
         {--cpu-minutes=5 : Minutes of sustained CPU before cutoff}
         {--oom-limit=3 : OOM crashes within window before suspend}
-        {--disk-warn=90 : Disk usage % to warn at}';
+        {--disk-warn=90 : Disk usage % to warn at}
+        {--wings-rss-mb=2048 : Wings daemon RAM alert threshold (MB)}';
 
     protected $description = 'Zenith Watchdog: crash auto-restart, overload cutoff, disk guard';
 

@@ -154,6 +154,7 @@ Route::prefix('/nodes/{node:id}')->name('api.admin.nodes')->group(function (): v
     Route::get('/system-information', SystemInformationController::class)->name('.system-information');
     Route::post('/deploy-token', DeployTokenController::class)->middleware(RequireSessionAuthentication::class)->name('.deploy-token');
     Route::get('/utilization', UtilizationController::class)->name('.utilization');
+    Route::get('/node-metrics', \Pterodactyl\Http\Controllers\Api\Admin\Servers\NodeMetricsController::class)->name('.node-metrics');
 });
 
 /*

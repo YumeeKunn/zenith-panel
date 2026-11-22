@@ -31,3 +31,13 @@ Route::get('/'.ExtensionSettingFiles::ROUTE_PREFIX.'/{extension}/{file}', Extens
 Route::get('/{react}', [IndexController::class, 'index'])
     ->where('react', '^(?!(\/)?(api|auth|daemon)).+')
     ->fallback();
+
+// Zenith Graph Monitor — admin-only metrics dashboard (session protected)
+Route::get('/metrics-graph', function () {
+    if (!auth()->user() || !auth()->user()->root_admin) {
+        abort(403);
+    }
+    $node = \Pterodactyl\Models\Node::first();
+    $server = \Pterodactyl\Models\Server::first();
+    return view('admin.zenith-graph', ['node' => $node, 'server' => $server]);
+})->name('admin.zenith.graph');
