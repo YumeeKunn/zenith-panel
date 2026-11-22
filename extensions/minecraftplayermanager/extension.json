@@ -1,0 +1,48 @@
+{
+    "$schema": "./node_modules/@pterodactyl/sdk/manifest.schema.json",
+    "id": "minecraftplayermanager",
+    "name": "MC Player Manager",
+    "version": "1.0.0",
+    "requires": {
+        "panel": "^2.0.0-dev",
+        "sdk": ">=2.0.0-beta.6 <3.0",
+        "php": "^8.3"
+    },
+    "description": "Manage Minecraft players from the panel",
+    "author": "YumeeKunn",
+    "provider": "Minecraftplayermanager\\MinecraftplayermanagerProvider",
+    "ui": {
+        "entry": "dist/client.js",
+        "mode": "native",
+        "prefix": "mpm",
+        "screens": [
+            {
+                "id": "main",
+                "area": "server",
+                "path": "minecraftplayermanager",
+                "nav": {
+                    "label": "MC Player Manager"
+                },
+                "when": {
+                    "eggTags": {
+                        "any": [
+                            "minecraft",
+                            "paper",
+                            "purpur",
+                            "spigot",
+                            "vanilla",
+                            "bukkit",
+                            "folia",
+                            "forge",
+                            "fabric",
+                            "velocity"
+                        ]
+                    }
+                }
+            }
+        ]
+    },
+    "autoload": {
+        "Minecraftplayermanager\\": "src/"
+    }
+}

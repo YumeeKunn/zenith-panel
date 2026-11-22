@@ -1,0 +1,11 @@
+{
+    "description": "Install and manage Minecraft plugins with search and filtering",
+    "autoload": {
+        "psr-4": {
+            "Minecraftpluginmanager\\": "src/"
+        }
+    },
+    "config": {
+        "autoloader-suffix": "MinecraftpluginmanagerExtension"
+    }
+}

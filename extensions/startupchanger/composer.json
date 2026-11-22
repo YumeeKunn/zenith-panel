@@ -1,0 +1,11 @@
+{
+    "description": "Let users edit their server startup command safely with pattern validation",
+    "autoload": {
+        "psr-4": {
+            "Startupchanger\\": "src/"
+        }
+    },
+    "config": {
+        "autoloader-suffix": "StartupchangerExtension"
+    }
+}

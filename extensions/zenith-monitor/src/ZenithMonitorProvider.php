@@ -6,6 +6,7 @@ use Illuminate\Console\Scheduling\Schedule;
 use Pterodactyl\Extensions\ExtensionProvider;
 use Pterodactyl\Services\Extensions\ExtensionSettingDefinition;
 use Pterodactyl\Services\Extensions\ExtensionSettingsDefinition;
+use ZenithMonitor\Services\Settings;
 use ZenithMonitor\Services\WatchdogService;
 
 class ZenithMonitorProvider extends ExtensionProvider
@@ -18,18 +19,21 @@ class ZenithMonitorProvider extends ExtensionProvider
 
     public function boot(): void
     {
+        Settings::$store = $this->settings();
         $this->registerApiRoutes();
 
         $this->registerSettings(new ExtensionSettingsDefinition($this->settings(), [
             // Notification channels
             ExtensionSettingDefinition::make('discord_webhook', 'discord_webhook', '', ['nullable', 'string', 'max:500'])
                 ->label('Discord Webhook URL')
-                ->help('Node/server alerts is channel pe jayenge. Channel → Integrations → Webhooks → copy URL.')
-                ->field('text'),
+                ->help('Node/server alerts go to this channel. Server Settings → Integrations → Webhooks → copy URL.')
+                ->field('password')
+                ->secret(),
             ExtensionSettingDefinition::make('generic_webhook', 'generic_webhook', '', ['nullable', 'string', 'max:500'])
                 ->label('Generic Webhook URL')
-                ->help('ntfy.sh topic ya koi JSON endpoint. POST {title, message, severity, type}.')
-                ->field('text'),
+                ->help('ntfy.sh topic or any JSON endpoint. Receives POST {title, message, severity, type}.')
+                ->field('password')
+                ->secret(),
             ExtensionSettingDefinition::make('cooldown', 'cooldown', 900, ['required', 'integer', 'min:60', 'max:86400'])
                 ->label('Alert Repeat Interval (seconds)')
                 ->help('Same alert iske baad repeat hoga (anti-spam).')

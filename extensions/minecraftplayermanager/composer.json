@@ -1,0 +1,11 @@
+{
+    "description": "Manage Minecraft players from the panel",
+    "autoload": {
+        "psr-4": {
+            "Minecraftplayermanager\\": "src/"
+        }
+    },
+    "config": {
+        "autoloader-suffix": "MinecraftplayermanagerExtension"
+    }
+}

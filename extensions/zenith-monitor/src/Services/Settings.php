@@ -2,19 +2,26 @@
 
 namespace ZenithMonitor\Services;
 
-use Pterodactyl\Models\Setting;
-
-/** Extension settings store (settings table, zenith-monitor:* keys). */
+/**
+ * Access to the extension's settings store.
+ * The provider registers itself here at boot so services can reach the
+ * built-in ExtensionSettings store (encrypted secrets supported).
+ */
 class Settings
 {
-    public static function get(string $short): ?string
+    public static ?\Pterodactyl\Services\Extensions\ExtensionSettings $store = null;
+
+    public static function get(string $key, ?string $default = null): ?string
     {
-        $v = Setting::where('key', 'zenith-monitor:' . $short)->value('value');
-        return ($v !== null && $v !== '') ? $v : null;
+        if (self::$store === null) {
+            return $default;
+        }
+        $v = self::$store->get($key, $default);
+        return $v === null ? $default : (is_scalar($v) ? (string) $v : json_encode($v));
     }
 
-    public static function set(string $short, string $value): void
+    public static function set(string $key, string $value): void
     {
-        Setting::updateOrCreate(['key' => 'zenith-monitor:' . $short], ['value' => $value]);
+        self::$store?->set($key, $value);
     }
 }

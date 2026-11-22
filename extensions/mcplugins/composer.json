@@ -1,0 +1,11 @@
+{
+    "description": "Browse and install Minecraft plugins from the panel",
+    "autoload": {
+        "psr-4": {
+            "Mcplugins\\": "src/"
+        }
+    },
+    "config": {
+        "autoloader-suffix": "McpluginsExtension"
+    }
+}

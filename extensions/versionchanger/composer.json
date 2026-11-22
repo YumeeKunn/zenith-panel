@@ -1,0 +1,11 @@
+{
+    "description": "Switch your Minecraft server version with one click \u2014 Paper, Purpur, Vanilla, Forge and more",
+    "autoload": {
+        "psr-4": {
+            "Versionchanger\\": "src/"
+        }
+    },
+    "config": {
+        "autoloader-suffix": "VersionchangerExtension"
+    }
+}

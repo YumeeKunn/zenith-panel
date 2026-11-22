@@ -1,0 +1,49 @@
+{
+    "$schema": "./node_modules/@pterodactyl/sdk/manifest.schema.json",
+    "id": "versionchanger",
+    "name": "Version Changer",
+    "version": "1.0.0",
+    "requires": {
+        "panel": "^2.0.0-dev",
+        "sdk": ">=2.0.0-beta.6 <3.0",
+        "php": "^8.3"
+    },
+    "description": "Switch your Minecraft server version with one click \u2014 Paper, Purpur, Vanilla, Forge and more",
+    "author": "YumeeKunn",
+    "provider": "Versionchanger\\VersionchangerProvider",
+    "ui": {
+        "entry": "dist/client.js",
+        "mode": "native",
+        "prefix": "vc",
+        "screens": [
+            {
+                "id": "main",
+                "area": "server",
+                "path": "versionchanger",
+                "nav": {
+                    "label": "Version Changer"
+                },
+                "permission": [],
+                "when": {
+                    "eggTags": {
+                        "any": [
+                            "minecraft",
+                            "paper",
+                            "purpur",
+                            "spigot",
+                            "vanilla",
+                            "bukkit",
+                            "folia",
+                            "forge",
+                            "fabric",
+                            "velocity"
+                        ]
+                    }
+                }
+            }
+        ]
+    },
+    "autoload": {
+        "Versionchanger\\": "src/"
+    }
+}
