@@ -22,98 +22,147 @@ interface NodePoint { collected_at: string; cpu_percent: number; memory_percent:
 interface UsageServer { id: number; name: string; state: string; cpu_percent: number; memory_percent: number; disk_percent: number; memory_used_mb: number; memory_limit_mb: number; disk_used_mb: number; disk_limit_mb: number; suspended: boolean; }
 interface NodeInfo { id: number; name: string; fqdn: string; }
 
-/* ── Improved chart: grid + fill gradient + avg line + dots ── */
+/* ── Improved chart: grid + fill + avg line + hover tooltip (no glow) ── */
 function LineChart({ series, max, height = 220, unit = '%' }: { series: { data: (number | null)[]; color: string; label: string }[]; max: number; height?: number; unit?: string }) {
     const ref = useRef<HTMLCanvasElement | null>(null);
+    const hoverRef = useRef<number | null>(null);
+    const redrawRef = useRef<() => void>(() => {});
+
     useEffect(() => {
         const canvas = ref.current;
         if (!canvas) return;
         const ctx = canvas.getContext('2d');
         if (!ctx) return;
-        const dpr = window.devicePixelRatio || 1;
-        const w = canvas.clientWidth;
-        canvas.width = w * dpr;
-        canvas.height = height * dpr;
-        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-        ctx.clearRect(0, 0, w, height);
 
-        const padL = 44, padR = 12, padT = 18, padB = 24;
-        const gw = w - padL - padR, gh = height - padT - padB;
+        const draw = () => {
+            const dpr = window.devicePixelRatio || 1;
+            const w = canvas.clientWidth;
+            canvas.width = w * dpr;
+            canvas.height = height * dpr;
+            ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+            ctx.clearRect(0, 0, w, height);
 
-        // horizontal grid + labels
-        ctx.font = '10px ui-monospace,monospace';
-        for (let i = 0; i <= 5; i++) {
-            const y = padT + (i * gh) / 5;
-            ctx.strokeStyle = i === 5 ? 'rgba(139,147,167,0.4)' : 'rgba(139,147,167,0.15)';
-            ctx.beginPath(); ctx.moveTo(padL, y); ctx.lineTo(w - padR, y); ctx.stroke();
-            ctx.fillStyle = '#8b95a7';
-            ctx.fillText(`${Math.round(max - (i * max) / 5)}${unit}`, 4, y + 3);
-        }
+            const padL = 44, padR = 12, padT = 18, padB = 24;
+            const gw = w - padL - padR, gh = height - padT - padB;
 
-        const maxLen = Math.max(...series.map((s) => s.data.length), 1);
-        if (maxLen < 2) {
-            ctx.fillStyle = '#8b95a7';
-            ctx.fillText('collecting data...', padL + 10, padT + gh / 2);
-            return;
-        }
-        const px = (i: number) => padL + (i / (maxLen - 1)) * gw;
-        const py = (v: number) => padT + (1 - Math.min(Math.max(v, 0), max) / max) * gh;
-
-        for (const s of series) {
-            // area fill gradient
-            const grad = ctx.createLinearGradient(0, padT, 0, padT + gh);
-            grad.addColorStop(0, s.color + '44');
-            grad.addColorStop(1, s.color + '05');
-            ctx.beginPath();
-            let started = false;
-            s.data.forEach((v, i) => {
-                if (v == null) return;
-                const X = px(i), Y = py(v);
-                if (!started) { ctx.moveTo(X, py(0)); ctx.lineTo(X, Y); started = true; }
-                else ctx.lineTo(X, Y);
-            });
-            if (started) {
-                const lastIdx = s.data.reduce((acc, v, i) => (v != null ? i : acc), 0);
-                ctx.lineTo(px(lastIdx), py(0));
-                ctx.closePath();
-                ctx.fillStyle = grad;
-                ctx.fill();
+            ctx.font = '10px ui-monospace,monospace';
+            for (let i = 0; i <= 5; i++) {
+                const y = padT + (i * gh) / 5;
+                ctx.strokeStyle = i === 5 ? 'rgba(139,147,167,0.4)' : 'rgba(139,147,167,0.15)';
+                ctx.beginPath(); ctx.moveTo(padL, y); ctx.lineTo(w - padR, y); ctx.stroke();
+                ctx.fillStyle = '#8b95a7';
+                ctx.fillText(`${Math.round(max - (i * max) / 5)}${unit}`, 4, y + 3);
             }
-            // line
-            ctx.beginPath();
-            started = false;
-            s.data.forEach((v, i) => {
-                if (v == null) return;
-                const X = px(i), Y = py(v);
-                if (!started) { ctx.moveTo(X, Y); started = true; } else ctx.lineTo(X, Y);
-            });
-            ctx.strokeStyle = s.color; ctx.lineWidth = 2;
-            ctx.shadowColor = s.color + '66'; ctx.shadowBlur = 4;
-            ctx.stroke(); ctx.shadowBlur = 0;
-            // last dot
-            const lastIdx = s.data.reduce((acc, v, i) => (v != null ? i : acc), 0);
-            const lastV = s.data[lastIdx];
-            if (lastV != null) {
-                ctx.beginPath(); ctx.arc(px(lastIdx), py(lastV), 3.5, 0, Math.PI * 2);
-                ctx.fillStyle = s.color; ctx.fill();
-                ctx.fillStyle = '#e8eaf0'; ctx.font = 'bold 11px ui-monospace,monospace';
-                ctx.fillText(`${Math.round(lastV)}${unit}`, Math.min(px(lastIdx) + 6, w - 40), py(lastV) - 6);
+
+            const maxLen = Math.max(...series.map((s) => s.data.length), 1);
+            if (maxLen < 2) {
+                ctx.fillStyle = '#8b95a7';
+                ctx.fillText('collecting data...', padL + 10, padT + gh / 2);
+                return;
             }
-            // avg dashed line
-            const vals = s.data.filter((v) => v != null) as number[];
-            if (vals.length > 4) {
-                const avg = vals.reduce((a, b) => a + b, 0) / vals.length;
-                ctx.setLineDash([4, 4]);
-                ctx.strokeStyle = s.color + '77'; ctx.lineWidth = 1;
-                ctx.beginPath(); ctx.moveTo(padL, py(avg)); ctx.lineTo(w - padR, py(avg)); ctx.stroke();
+            const px = (i: number) => padL + (i / (maxLen - 1)) * gw;
+            const py = (v: number) => padT + (1 - Math.min(Math.max(v, 0), max) / max) * gh;
+
+            for (const s of series) {
+                const grad = ctx.createLinearGradient(0, padT, 0, padT + gh);
+                grad.addColorStop(0, s.color + '33');
+                grad.addColorStop(1, s.color + '05');
+                ctx.beginPath();
+                let started = false;
+                s.data.forEach((v, i) => {
+                    if (v == null) return;
+                    const X = px(i), Y = py(v);
+                    if (!started) { ctx.moveTo(X, py(0)); ctx.lineTo(X, Y); started = true; }
+                    else ctx.lineTo(X, Y);
+                });
+                if (started) {
+                    const lastIdx = s.data.reduce((acc, v, i) => (v != null ? i : acc), 0);
+                    ctx.lineTo(px(lastIdx), py(0));
+                    ctx.closePath();
+                    ctx.fillStyle = grad;
+                    ctx.fill();
+                }
+                ctx.beginPath();
+                started = false;
+                s.data.forEach((v, i) => {
+                    if (v == null) return;
+                    const X = px(i), Y = py(v);
+                    if (!started) { ctx.moveTo(X, Y); started = true; } else ctx.lineTo(X, Y);
+                });
+                ctx.strokeStyle = s.color; ctx.lineWidth = 2;
+                ctx.stroke();
+
+                const vals = s.data.filter((v) => v != null) as number[];
+                if (vals.length > 4) {
+                    const avg = vals.reduce((a, b) => a + b, 0) / vals.length;
+                    ctx.setLineDash([4, 4]);
+                    ctx.strokeStyle = s.color + '77'; ctx.lineWidth = 1;
+                    ctx.beginPath(); ctx.moveTo(padL, py(avg)); ctx.lineTo(w - padR, py(avg)); ctx.stroke();
+                    ctx.setLineDash([]);
+                }
+            }
+
+            // hover: vertical line + dots + tooltip
+            const hi = hoverRef.current;
+            if (hi !== null && hi >= 0 && hi < maxLen) {
+                ctx.strokeStyle = 'rgba(232,234,240,0.35)';
+                ctx.setLineDash([3, 3]);
+                ctx.beginPath(); ctx.moveTo(px(hi), padT); ctx.lineTo(px(hi), padT + gh); ctx.stroke();
                 ctx.setLineDash([]);
+                let ty = padT + 8;
+                for (const s of series) {
+                    const v = s.data[hi];
+                    if (v == null) continue;
+                    ctx.beginPath(); ctx.arc(px(hi), py(v), 4, 0, Math.PI * 2);
+                    ctx.fillStyle = s.color; ctx.fill();
+                    ctx.strokeStyle = '#0f1117'; ctx.lineWidth = 1.5; ctx.stroke();
+                    const text = `${s.label}: ${Math.round(v * 10) / 10}${unit}`;
+                    ctx.font = '11px ui-monospace,monospace';
+                    const tw = ctx.measureText(text).width + 10;
+                    const bx = Math.min(px(hi) + 8, w - tw - 6);
+                    ctx.fillStyle = 'rgba(15,17,23,0.92)';
+                    ctx.fillRect(bx, ty, tw, 16);
+                    ctx.strokeStyle = s.color; ctx.lineWidth = 1;
+                    ctx.strokeRect(bx, ty, tw, 16);
+                    ctx.fillStyle = '#e8eaf0';
+                    ctx.fillText(text, bx + 5, ty + 12);
+                    ty += 20;
+                }
             }
+
             // legend
-            const lx = padL + 8 + (series.indexOf(s) * 130);
-            ctx.fillStyle = s.color; ctx.fillRect(lx, 4, 10, 3);
-            ctx.fillStyle = '#8b95a7'; ctx.font = '10px sans-serif';
-            ctx.fillText(`${s.label} avg ${Math.round(vals.reduce((a, b) => a + b, 0) / (vals.length || 1))}${unit}`, lx + 14, 8);
-        }
+            let lx = padL + 8;
+            for (const s of series) {
+                const vals = s.data.filter((v) => v != null) as number[];
+                const avg = vals.length ? Math.round(vals.reduce((a, b) => a + b, 0) / vals.length) : 0;
+                ctx.fillStyle = s.color; ctx.fillRect(lx, 4, 10, 3);
+                ctx.fillStyle = '#8b95a7'; ctx.font = '10px sans-serif';
+                ctx.fillText(`${s.label} avg ${avg}${unit}`, lx + 14, 8);
+                lx += 14 + ctx.measureText(`${s.label} avg ${avg}${unit}`).width + 18;
+            }
+        };
+
+        redrawRef.current = draw;
+        draw();
+
+        const onMove = (e: MouseEvent) => {
+            const rect = canvas.getBoundingClientRect();
+            const mx = e.clientX - rect.left;
+            const padL = 44, padR = 12;
+            const gw = canvas.clientWidth - padL - padR;
+            const maxLen = Math.max(...series.map((s) => s.data.length), 1);
+            if (maxLen < 2) return;
+            const idx = Math.round(((mx - padL) / gw) * (maxLen - 1));
+            hoverRef.current = idx >= 0 && idx < maxLen ? idx : null;
+            redrawRef.current();
+        };
+        const onLeave = () => { hoverRef.current = null; redrawRef.current(); };
+        canvas.addEventListener('mousemove', onMove);
+        canvas.addEventListener('mouseleave', onLeave);
+        return () => {
+            canvas.removeEventListener('mousemove', onMove);
+            canvas.removeEventListener('mouseleave', onLeave);
+        };
     }, [series, max, height, unit]);
     return <canvas ref={ref} style={{ width: '100%', height }} />;
 }
