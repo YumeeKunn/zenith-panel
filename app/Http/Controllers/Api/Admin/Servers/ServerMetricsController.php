@@ -17,6 +17,9 @@ class ServerMetricsController extends ApplicationApiController
     public function __invoke(Server $server, \Illuminate\Http\Request $request): JsonResponse
     {
         $hours = min((int) $request->query('hours', '24'), 168);
+
+        // On-demand collection — graph tab open = collecting
+        app(\Pterodactyl\Services\Zenith\MetricsService::class)->collect();
         $limit = min((int) $request->query('limit', '500'), 5000);
 
         $metrics = ServerMetric::where('server_id', $server->id)

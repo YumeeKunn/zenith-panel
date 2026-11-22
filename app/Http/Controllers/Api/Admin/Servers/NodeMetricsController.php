@@ -16,6 +16,9 @@ class NodeMetricsController
     public function __invoke(\Pterodactyl\Models\Node $node, \Illuminate\Http\Request $request): JsonResponse
     {
         $hours = min((int) $request->query('hours', '6'), 48);
+
+        // On-demand collection — tab open = collecting, closed = zero cost
+        app(\Pterodactyl\Services\Zenith\MetricsService::class)->collect();
         $limit = min((int) $request->query('limit', '600'), 5000);
 
         $metrics = NodeMetric::where('node_id', $node->id)

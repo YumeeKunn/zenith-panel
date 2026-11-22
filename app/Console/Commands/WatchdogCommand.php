@@ -292,42 +292,6 @@ class WatchdogCommand extends Command
     }
 
     /** Zenith metrics — per-server rows (48h retention). */
-    private function collectMetrics(bool $dry): void
-    {
-        if ($dry) return;
-        try {
-            $nodes = Node::all();
-            foreach ($nodes as $node) {
-                $base = $node->scheme . '://' . $node->fqdn . ':' . $node->daemonListen;
-                $token = $node->getDecryptedKey();
-                try {
-                    $resp = Http::withToken($token)->withOptions(['verify' => !$this->insecureTls()])->timeout(15)->get($base . '/api/servers');
-                    if (!$resp->successful()) continue;
-                    foreach ($resp->json() ?? [] as $ws) {
-                        $uuid = $ws['configuration']['uuid'] ?? null;
-                        if (!$uuid) continue;
-                        $server = Server::where('uuid', $uuid)->first();
-                        if (!$server) continue;
-                        $util = $ws['utilization'] ?? [];
-                        \Pterodactyl\Models\ServerMetric::create([
-                            'server_id' => $server->id,
-                            'cpu_percent' => (float) ($util['cpu_absolute'] ?? 0),
-                            'memory_bytes' => (int) ($util['memory_bytes'] ?? 0),
-                            'memory_limit_bytes' => (int) ($util['memory_limit_bytes'] ?? 0),
-                            'disk_bytes' => (int) ($util['disk_bytes'] ?? 0),
-                            'network_rx_bytes' => (int) ($util['network']['rx_bytes'] ?? 0),
-                            'network_tx_bytes' => (int) ($util['network']['tx_bytes'] ?? 0),
-                            'state' => $ws['state'] ?? 'offline',
-                            'collected_at' => now(),
-                        ]);
-                    }
-                } catch (\Throwable $e) { continue; }
-            }
-            \Pterodactyl\Models\ServerMetric::where('collected_at', '<', now()->subHours(48))->delete();
-        } catch (\Throwable $e) {
-            \Log::channel('daily')->error('[watchdog] metrics collect failed: ' . $e->getMessage());
-        }
-    }
 
     /** Node-level metrics: allocated load (ALL nodes) + host actual (local node only). */
     private function storeNodeMetrics(Node $node, ?array $hostStats, ?float $allocatedMem, ?float $allocatedDisk, bool $dry): void
