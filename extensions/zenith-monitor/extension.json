@@ -25,14 +25,6 @@
                 }
             },
             {
-                "id": "graphs",
-                "area": "admin",
-                "path": "zenith-graphs",
-                "nav": {
-                    "label": "Node Graphs"
-                }
-            },
-            {
                 "id": "control",
                 "area": "admin",
                 "path": "zenith-control",
