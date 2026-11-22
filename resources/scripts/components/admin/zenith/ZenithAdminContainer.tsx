@@ -264,8 +264,6 @@ function GraphMonitorTab() {
     const [loading, setLoading] = useState(true);
     const [range, setRange] = useState(6);
     const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-    const canvasRef = useRef<HTMLCanvasElement | null>(null);
-    const chartRef = useRef<any>(null);
 
     const loadNodes = useCallback(async () => {
         const r = await fetch('/api/admin/nodes', { headers: { Accept: 'application/json' } });
@@ -276,10 +274,11 @@ function GraphMonitorTab() {
     }, [selectedNode]);
 
     const loadMetrics = useCallback(async (nodeId: number, hours: number) => {
-        const r = await fetch(`/api/admin/nodes/${nodeId}/node-metrics?hours=${hours}`, { headers: { Accept: 'application/json' } });
-        const d = await r.json();
-        setPoints(d.data || []);
-        // server metrics for the first server on this node
+        const rn = await fetch(`/api/admin/nodes/${nodeId}/node-metrics?hours=${hours}`, { headers: { Accept: 'application/json' } });
+        if (rn.ok) {
+            const dn = await rn.json();
+            setPoints(dn.data || []);
+        }
         const rs = await fetch(`/api/admin/servers?hours=${hours}`, { headers: { Accept: 'application/json' } });
         if (rs.ok) {
             const sd = await rs.json();
@@ -307,7 +306,6 @@ function GraphMonitorTab() {
         const tick = async () => {
             await loadMetrics(selectedNode, range);
             setLoading(false);
-            drawChart();
         };
         tick();
         timerRef.current = setInterval(tick, 3000);
@@ -316,68 +314,11 @@ function GraphMonitorTab() {
         };
     }, [selectedNode, range, loadMetrics]);
 
-    const drawChart = () => {
-        // lightweight custom canvas chart (no external lib needed)
-        const canvas = canvasRef.current;
-        if (!canvas) return;
-        const ctx = canvas.getContext('2d');
-        if (!ctx) return;
-        const dpr = window.devicePixelRatio || 1;
-        const w = canvas.clientWidth;
-        const h = 220;
-        canvas.width = w * dpr;
-        canvas.height = h * dpr;
-        ctx.scale(dpr, dpr);
-        ctx.clearRect(0, 0, w, h);
-
-        // grid
-        ctx.strokeStyle = '#262b38';
-        ctx.lineWidth = 1;
-        for (let i = 0; i <= 4; i++) {
-            const y = 10 + (i * (h - 30)) / 4;
-            ctx.beginPath();
-            ctx.moveTo(40, y);
-            ctx.lineTo(w - 10, y);
-            ctx.stroke();
-            ctx.fillStyle = '#8b93a7';
-            ctx.font = '10px sans-serif';
-            ctx.fillText(`${100 - i * 25}%`, 5, y + 3);
-        }
-
-        const series: { data: number[]; color: string; label: string }[] = [
-            { data: points.map((p) => p.cpu_percent), color: '#8b5cf6', label: 'CPU' },
-            { data: points.map((p) => p.memory_percent), color: '#22d3ee', label: 'RAM' },
-        ];
-        const maxLen = Math.max(...series.map((s) => s.data.length), 1);
-        if (maxLen <= 1) return;
-
-        for (const s of series) {
-            ctx.strokeStyle = s.color;
-            ctx.lineWidth = 2;
-            ctx.beginPath();
-            s.data.forEach((v, i) => {
-                const x = 40 + (i / (maxLen - 1)) * (w - 50);
-                const y = 10 + (1 - Math.min(v, 100) / 100) * (h - 30);
-                if (i === 0) ctx.moveTo(x, y);
-                else ctx.lineTo(x, y);
-            });
-            ctx.stroke();
-        }
-
-        // legend
-        ctx.font = '11px sans-serif';
-        series.forEach((s, i) => {
-            ctx.fillStyle = s.color;
-            ctx.fillRect(40 + i * 80, 4, 10, 3);
-            ctx.fillStyle = '#8b93a7';
-            ctx.fillText(s.label, 55 + i * 80, 8);
-        });
-    };
-
-    if (loading && nodes.length === 0) return <Spinner size={'large'} centered />;
+    const last = points.length > 0 ? points[points.length - 1] : null;
 
     return (
         <div>
+            {/* Per-node tabs */}
             <div className={'mb-4 flex flex-wrap items-center gap-2'}>
                 {nodes.map((n) => (
                     <button
@@ -412,34 +353,143 @@ function GraphMonitorTab() {
                 </span>
             </div>
 
-            <div className={'rounded-lg border border-neutral-700 bg-neutral-800/50 p-5'}>
-                <h2 className={'mb-3 flex items-center gap-2 text-sm font-semibold uppercase tracking-wide text-neutral-300'}>
-                    <Cpu size={14} /> Node Load — CPU &amp; RAM % (last {range}h)
-                </h2>
-                {points.length === 0 ? (
-                    <div className={'py-10 text-center text-sm text-neutral-500'}>
-                        Collecting data points... graphs appear within a minute.
-                    </div>
-                ) : (
-                    <canvas ref={canvasRef} style={{ width: '100%', height: 220 }} />
-                )}
-                <div className={'mt-4 grid grid-cols-2 gap-3 md:grid-cols-4'}>
-                    <StatCard icon={<Cpu size={14} />} label={'Latest CPU'} value={points.length ? points[points.length - 1].cpu_percent + '%' : '—'} />
-                    <StatCard icon={<MemoryStick size={14} />} label={'Latest RAM'} value={points.length ? points[points.length - 1].memory_percent + '%' : '—'} />
-                    <StatCard icon={<HardDrive size={14} />} label={'Allocated Memory'} value={points.length ? Math.round(points[points.length - 1].allocated_memory_percent ?? 0) + '%' : '—'} />
-                    <StatCard icon={<Activity size={14} />} label={'Data Points'} value={String(points.length)} />
-                </div>
-                <p className={'mt-3 flex items-center gap-1 text-xs text-neutral-500'}>
-                    <Gauge size={10} /> Metrics are collected on-demand — zero resource cost while this tab is closed.
-                </p>
+            {/* Live stat cards */}
+            <div className={'mb-4 grid grid-cols-2 gap-3 md:grid-cols-4'}>
+                <StatCard icon={<Cpu size={14} />} color={'violet'} label={'CPU'} value={last ? last.cpu_percent + '%' : '—'} />
+                <StatCard icon={<MemoryStick size={14} />} color={'cyan'} label={'RAM'} value={last ? last.memory_percent + '%' : '—'} />
+                <StatCard icon={<HardDrive size={14} />} color={'green'} label={'Storage'} value={last ? last.disk_percent + '%' : '—'} />
+                <StatCard icon={<Activity size={14} />} color={'red'} label={'Data Points'} value={String(points.length)} />
             </div>
 
+            {/* 3 separate graphs */}
+            {points.length < 2 ? (
+                <div className={'rounded-lg border border-neutral-700 bg-neutral-800/50 py-16 text-center text-sm text-neutral-500'}>
+                    <Activity size={20} className={'mx-auto mb-2 text-neutral-600'} />
+                    Collecting data points... graphs appear within a minute.
+                </div>
+            ) : (
+                <div className={'grid gap-4'}>
+                    <GraphCard
+                        title={'CPU Usage'}
+                        icon={<Cpu size={14} />}
+                        series={[{ data: points.map((p) => p.cpu_percent), color: '#8b5cf6', label: 'CPU %' }]}
+                        max={100}
+                        unit={'%'}
+                    />
+                    <GraphCard
+                        title={'RAM Usage'}
+                        icon={<MemoryStick size={14} />}
+                        series={[
+                            { data: points.map((p) => p.memory_percent), color: '#22d3ee', label: 'Host RAM %' },
+                            { data: points.map((p) => p.allocated_memory_percent ?? 0), color: '#f472b6', label: 'Allocated %' },
+                        ]}
+                        max={100}
+                        unit={'%'}
+                    />
+                    <GraphCard
+                        title={'Storage Usage'}
+                        icon={<HardDrive size={14} />}
+                        series={[
+                            { data: points.map((p) => p.disk_percent), color: '#34d399', label: 'Host Disk %' },
+                            { data: points.map((p) => p.allocated_disk_percent ?? 0), color: '#fbbf24', label: 'Allocated %' },
+                        ]}
+                        max={100}
+                        unit={'%'}
+                    />
+                </div>
+            )}
+
+            {/* Server metrics (per-server detail) */}
             <div className={'mt-4 rounded-lg border border-neutral-700 bg-neutral-800/50 p-5'}>
                 <h2 className={'mb-3 flex items-center gap-2 text-sm font-semibold uppercase tracking-wide text-neutral-300'}>
-                    <BarChart3 size={14} /> Server Metrics
+                    <Server size={14} /> Container Metrics (CPU % / RAM MB)
                 </h2>
                 <ServerMetricsGraph points={serverPoints} />
             </div>
+
+            <p className={'mt-3 flex items-center gap-1 text-xs text-neutral-500'}>
+                <Gauge size={10} /> Metrics are collected on-demand — zero resource cost while this tab is closed.
+            </p>
+        </div>
+    );
+}
+
+/** Generic canvas line-chart card with grid + legend. */
+function GraphCard({
+    title,
+    icon,
+    series,
+    max,
+    unit,
+}: {
+    title: string;
+    icon: React.ReactNode;
+    series: { data: number[]; color: string; label: string }[];
+    max: number;
+    unit: string;
+}) {
+    const ref = useRef<HTMLCanvasElement | null>(null);
+
+    useEffect(() => {
+        const canvas = ref.current;
+        if (!canvas) return;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return;
+        const dpr = window.devicePixelRatio || 1;
+        const w = canvas.clientWidth;
+        const h = 200;
+        canvas.width = w * dpr;
+        canvas.height = h * dpr;
+        ctx.scale(dpr, dpr);
+        ctx.clearRect(0, 0, w, h);
+
+        // grid
+        ctx.strokeStyle = '#262b38';
+        ctx.lineWidth = 1;
+        for (let i = 0; i <= 4; i++) {
+            const y = 10 + (i * (h - 30)) / 4;
+            ctx.beginPath();
+            ctx.moveTo(45, y);
+            ctx.lineTo(w - 10, y);
+            ctx.stroke();
+            ctx.fillStyle = '#8b93a7';
+            ctx.font = '10px sans-serif';
+            ctx.fillText(`${Math.round(max - (i * max) / 4)}${unit}`, 5, y + 3);
+        }
+
+        const maxLen = Math.max(...series.map((s) => s.data.length), 1);
+        if (maxLen <= 1) return;
+
+        for (const s of series) {
+            ctx.strokeStyle = s.color;
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            s.data.forEach((v, i) => {
+                const x = 45 + (i / (maxLen - 1)) * (w - 55);
+                const y = 10 + (1 - Math.min(v, max) / max) * (h - 30);
+                if (i === 0) ctx.moveTo(x, y);
+                else ctx.lineTo(x, y);
+            });
+            ctx.stroke();
+        }
+
+        // legend
+        let lx = 45;
+        for (const s of series) {
+            ctx.fillStyle = s.color;
+            ctx.fillRect(lx, 4, 10, 3);
+            ctx.fillStyle = '#8b93a7';
+            ctx.fillText(s.label, lx + 14, 9);
+            lx += 14 + ctx.measureText(s.label).width + 16;
+        }
+    }, [series, max, unit]);
+
+    return (
+        <div className={'rounded-lg border border-neutral-700 bg-neutral-800/50 p-5'}>
+            <h2 className={'mb-3 flex items-center gap-2 text-sm font-semibold uppercase tracking-wide text-neutral-300'}>
+                {icon} {title}
+            </h2>
+            <canvas ref={ref} style={{ width: '100%', height: 200 }} />
         </div>
     );
 }
