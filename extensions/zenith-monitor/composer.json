@@ -1,0 +1,11 @@
+{
+    "description": "Watchdog protection, notifications, alert thresholds and live resource graphs for Pterodactyl",
+    "autoload": {
+        "psr-4": {
+            "ZenithMonitor\\": "src/"
+        }
+    },
+    "config": {
+        "autoloader-suffix": "ZenithMonitorExtension"
+    }
+}

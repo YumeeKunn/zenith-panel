@@ -1,0 +1,37 @@
+{
+    "$schema": "./node_modules/@pterodactyl/sdk/manifest.schema.json",
+    "id": "zenith-monitor",
+    "name": "Zenith Monitor",
+    "version": "1.0.0",
+    "requires": {
+        "panel": "^2.0.0-dev",
+        "sdk": ">=2.0.0-beta.6 <3.0",
+        "php": "^8.3"
+    },
+    "description": "Watchdog protection, notifications, alert thresholds and live resource graphs for Pterodactyl",
+    "author": "YumeeKunn",
+    "provider": "ZenithMonitor\\ZenithMonitorProvider",
+    "ui": {
+        "entry": "dist/client.js",
+        "mode": "native",
+        "prefix": "zn",
+        "screens": [
+            {
+                "id": "main",
+                "area": "server",
+                "path": "zenith-monitor",
+                "nav": {
+                    "label": "Zenith Monitor"
+                }
+            },
+            {
+                "id": "graphs",
+                "area": "admin",
+                "path": "zenith-graphs",
+                "nav": {
+                    "label": "Node Graphs"
+                }
+            }
+        ]
+    }
+}
